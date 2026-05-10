@@ -8,14 +8,17 @@ import { ServicesSection } from "./sections/ServicesSection";
 import { CertificationsSection } from "./sections/CertificationsSection";
 import { ContactSection } from "./sections/ContactSection";
 
+import { getAllCaseStudies } from "./lib/caseStudies";
 export default function Home() {
+  const caseStudies = getAllCaseStudies();
+  console.log("Loaded case studies:", caseStudies);
   return (
     <>
       <Header />
       <main>
         <HeroSection />
         <SkillsMarquee />
-        <WorkSection />
+        <WorkSection caseStudies={caseStudies} />
         <AboutSection />
         <ServicesSection />
         <CertificationsSection />
