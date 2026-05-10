@@ -1,0 +1,436 @@
+---
+title: "KC7 Valdorian Times Incident Investigation"
+category: "INCIDENT RESPONSE"
+description: "A comprehensive forensic investigation into a two-stage phishing campaign targeting The Valdorian Times newspaper, tracing attacker access from initial compromise through persistence and lateral movement to the final fraudulent article publication."
+thumbnail: "/images/projects/incident-response.jpg"
+date: "April 2026"
+classification: "Training / Practice"
+challenge: "KC7 Cybersecurity Challenge"
+analyst: "Kamau James Kimani"
+tags: ["Phishing", "PowerShell", "Reverse SSH", "Lateral Movement", "KQL", "MITRE ATT&CK"]
+status: "Completed"
+---
+
+# KC7 Cybersecurity Challenge — Incident Investigation Report
+
+> **Operation: Valdorian Times**
+> Analyst: Kamau James Kimani | Date: April 2026 | Classification: Training / Practice
+
+---
+
+## Executive Summary
+
+The Valdorian Times, a reputable newspaper, published a falsified article accusing mayoral candidate Luffy of corruption and environmental misconduct, just before a major election. The article was not the version approved by Editorial Director Nene Leaks, indicating a deliberate system compromise.
+
+This investigation traces how the attacker gained initial access, established persistence, moved laterally to compromise a second account, and ultimately used that access to send a fraudulent email that resulted in the false article being published.
+
+<Callout type="key">
+**KEY FINDING:** The attack was a two-stage phishing campaign targeting Sonia Gose and Ronnie McLovin. The attacker used malicious Word documents to drop PowerShell payloads, establish reverse SSH tunnels via plink.exe, and gain persistent RDP access — ultimately using Ronnie's compromised account to send the fake article to the printer.
+</Callout>
+
+---
+
+## Section 1 — Environment Reconnaissance
+
+Before diving into logs, basic reconnaissance of the organization's data was conducted to understand the environment.
+
+### 1.1 Organizational Overview
+
+| Field | Value |
+|-------|-------|
+| **Total Employees** | 100 |
+
+**Query Used:**
+```kql
+Employees | count
+```
+
+### 1.2 Identifying Key Personnel
+
+**Editorial Director**
+
+| Field | Value |
+|-------|-------|
+| **Name** | Nene Leaks |
+| **Email** | nene_leaks@valdoriantimes.news |
+| **Emails Received** | 18 |
+
+```kql
+Email
+| where recipient == "nene_leaks@valdoriantimes.news"
+| count
+```
+
+**Editorial Intern**
+
+| Field | Value |
+|-------|-------|
+| **Name** | Ronnie McLovin |
+| **Email** | ronnie_mclovin@valdoriantimes.news |
+| **Role** | Editorial Intern |
+
+```kql
+Employees
+| where role == "Editorial Intern"
+```
+
+**Senior Editor (Witness)**
+
+| Field | Value |
+|-------|-------|
+| **Name** | Sonia Gose |
+| **Email** | sonia_gose@valdoriantimes.news |
+| **Hostname** | UL0M-MACHINE |
+| **IP Address** | 10.10.0.3 |
+| **Role** | Senior Editor |
+
+```kql
+Employees
+| where name == "Sonia Gose"
+```
+
+**Newspaper Printer**
+
+| Field | Value |
+|-------|-------|
+| **Name** | Clark Kent |
+| **Email** | clark_kent@valdoriantimes.news |
+| **Emails Received** | 21 |
+
+```kql
+Email
+| where recipient has "clark_kent@valdoriantimes.news"
+```
+
+---
+
+## Section 2 — The Fraudulent Email to Clark Kent
+
+Clark Kent (Newspaper Printer) confirmed receiving an email on January 31, 2024 that he believed came from Ronnie McLovin containing the final article for publication. Ronnie McLovin denied sending this email.
+
+### 2.1 Email Details
+
+| Field | Value |
+|-------|-------|
+| **Date** | 2024-01-31 |
+| **Recipient** | clark_kent@valdoriantimes.news |
+| **Apparent Sender** | ronnie_mclovin@valdoriantimes.news |
+| **Subject** | URGENT: Final OpEd Draft Edits (Please publish the following article in tomorrow's paper) |
+| **Attachment** | OpEdFinal_to_print.docx |
+
+```kql
+Email
+| where recipient has "clark_kent@valdoriantimes.news"
+```
+
+<Callout type="finding">
+**FINDING:** Ronnie McLovin adamantly denied sending this email. This raised the hypothesis that her account had been compromised and used by a threat actor.
+</Callout>
+
+---
+
+## Section 3 — Phase 1: Initial Access via Sonia Gose
+
+### 3.1 Phishing Email Received
+
+Senior Editor Sonia Gose came forward with a suspicious email she received. Investigation confirmed she clicked the link and downloaded a malicious file.
+
+| Field | Value |
+|-------|-------|
+| **Sender** | valdorias_best_recruiter@gmail.com |
+| **Recipient** | sonia_gose@valdoriantimes.news |
+| **Timestamp** | 2024-01-05T09:42:05.000Z |
+| **Phishing URL** | https://promotionrecruit.com/published/Valdorian_Times_Editorial_Offer_Letter.docx |
+| **File Name** | Valdorian_Times_Editorial_Offer_Letter.docx |
+
+### 3.2 Confirming the Click — OutboundNetworkEvents
+
+```kql
+OutboundNetworkEvents
+| where src_ip == "10.10.0.3" and url == "https://promotionrecruit.com/published/Valdorian_Times_Editorial_Offer_Letter.docx"
+```
+
+<Callout type="confirmed">
+**CONFIRMED:** An outbound GET request matching the phishing URL was observed from Sonia's IP (10.10.0.3), confirming she clicked the link.
+</Callout>
+
+### 3.3 File Drop — FileCreationEvents
+
+| Field | Value |
+|-------|-------|
+| **Hostname** | UL0M-MACHINE |
+| **File** | Valdorian_Times_Editorial_Offer_Letter.docx |
+| **Full Path** | C:\Users\sogose\Downloads\Valdorian_Times_Editorial_Offer_Letter.docx |
+| **Timestamp** | 2024-01-05T10:24:04Z |
+| **SHA256** | `60b854332e393a6a2f0015383969c3ac705126a6b7829b762057a3994967a61f` |
+
+```kql
+FileCreationEvents
+| where hostname == "UL0M-MACHINE" and filename == "Valdorian_Times_Editorial_Offer_Letter.docx"
+```
+
+### 3.4 PowerShell Payload Dropped
+
+Immediately after the docx was downloaded, a PowerShell script was written to disk — indicating the Word document contained a malicious macro.
+
+| Field | Value |
+|-------|-------|
+| **Script Name** | hacktivist_manifesto.ps1 |
+| **Timestamp** | 2024-01-05T10:24:32.000Z |
+| **Username** | sogose |
+| **Hostname** | UL0M-MACHINE |
+
+```kql
+ProcessEvents
+| where hostname == "UL0M-MACHINE" and username == "sogose" and process_commandline contains ".ps1"
+```
+
+### 3.5 Persistence — Scheduled Task Created
+
+A scheduled task was created to execute the PowerShell script every 5 hours, with ExecutionPolicy bypassed to evade system hardening.
+
+| Field | Value |
+|-------|-------|
+| **Task Name** | hacktivist Manifesto |
+| **Trigger** | Every 5 hours (hourly /mo 5) |
+| **Script Path** | C:\ProgramData\hacktivist_manifesto.ps1 |
+| **Bypass** | -ExecutionPolicy Bypass |
+
+```
+schtasks /create /sc hourly /mo 5 /tn "hacktivist Manifesto" /tr "powershell.exe -ExecutionPolicy Bypass -File C:/ProgramData/hacktivist_manifesto.ps1"
+```
+
+### 3.6 Reverse SSH Tunnel — plink.exe
+
+The PowerShell script downloaded plink.exe (PuTTY command-line SSH client) and used it to establish a reverse SSH tunnel, forwarding RDP port 3389 from the attacker's remote server back to Sonia's local machine — giving the attacker persistent remote desktop access.
+
+| Field | Value |
+|-------|-------|
+| **Tool** | plink.exe (PuTTY suite) |
+| **Tunnel Type** | Reverse SSH (-R flag) |
+| **Port Forwarded** | 3389 → 3389 (RDP) |
+| **Attacker User** | $had0w |
+| **Password** | thruthW!llS3tUfree (found in plaintext) |
+
+```kql
+ProcessEvents
+| where username == "sogose" and process_commandline contains "plink.exe"
+```
+
+### 3.7 Post-Compromise Discovery Commands
+
+With RDP access established, the attacker ran a series of discovery commands via cmd.exe to enumerate the compromised environment before lateral movement.
+
+**Command categories observed:**
+
+| Category | Commands |
+|----------|----------|
+| System Information | `systeminfo`, `hostname` |
+| User & Group Discovery | `whoami`, `net user`, `net accounts` |
+| Network Discovery | `arp -a`, `ipconfig`, `nslookup` |
+| File & Share Discovery | `net view`, `net share` |
+| Process & Service Discovery | `tasklist`, `sc query` |
+| Domain Discovery | Domain enumeration commands |
+
+```kql
+ProcessEvents
+| where hostname == "UL0M-MACHINE"
+| where process_parent_name contains "cmd.exe"
+```
+
+---
+
+## Section 4 — Phase 2: Lateral Target — Ronnie McLovin
+
+The attacker's ultimate goal was to send a fraudulent article using an insider account. After gaining access via Sonia, the attacker targeted Editorial Intern Ronnie McLovin — the person responsible for sending final article drafts to the printer.
+
+### 4.1 Phishing Email to Ronnie
+
+| Field | Value |
+|-------|-------|
+| **Sender** | valdorias_best_recruiter@gmail.com |
+| **Recipient** | ronnie_mclovin@valdoriantimes.news |
+| **Timestamp** | 2024-01-10T08:48:16.000Z |
+| **Subject** | [EXTERNAL] Breaking News: We're Hiring! Apply Now for Reporter Roles |
+| **Phishing URL** | https://promotionrecruit.org/share/Editorial_J0b_Openings_2024.docx |
+
+```kql
+Email
+| where sender has "valdorias_best_recruiter@gmail.com" and recipient has "ronnie_mclovin@valdoriantimes.news"
+```
+
+### 4.2 Confirming the Click
+
+| Field | Value |
+|-------|-------|
+| **Timestamp** | 2024-01-10T08:55:07Z |
+| **Source IP** | 10.10.0.19 |
+| **Method** | GET |
+| **URL** | https://promotionrecruit.org/share/Editorial_J0b_Openings_2024.docx |
+| **User-Agent** | Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 Chrome/83.0.4103.106 Safari/537.36 |
+
+```kql
+OutboundNetworkEvents
+| where url has "https://promotionrecruit.org/share/Editorial_J0b_Openings_2024.docx"
+```
+
+### 4.3 File Drop on Ronnie's Machine
+
+| Field | Value |
+|-------|-------|
+| **File** | Editorial_J0b_Openings_2024.docx |
+| **Hostname** | A37A-DESKTOP |
+| **Username** | ronnie_mclovin (inferred) |
+
+```kql
+FileCreationEvents
+| where filename has "Editorial_J0b_Openings_2024.docx" and hostname has "A37A-DESKTOP"
+```
+
+<Callout type="finding">
+**FINDING:** After the file was downloaded, a PowerShell script was dropped to Ronnie's machine — mirroring the same attack pattern used against Sonia Gose. The attacker then used Ronnie's compromised account to send OpEdFinal_to_print.docx to Clark Kent on January 31, 2024.
+</Callout>
+
+---
+
+## Section 5 — Attack Timeline
+
+| Timestamp | Target | Event |
+|-----------|--------|-------|
+| 2024-01-05T09:42:05Z | **Sonia Gose** | Phishing email received from valdorias_best_recruiter@gmail.com |
+| 2024-01-05T10:24:04Z | **Sonia Gose** | Valdorian_Times_Editorial_Offer_Letter.docx downloaded to UL0M-MACHINE |
+| 2024-01-05T10:24:32Z | **Sonia Gose** | hacktivist_manifesto.ps1 dropped to disk |
+| 2024-01-05T10:24:xxZ | **Sonia Gose** | Scheduled task created — script runs every 5 hours, ExecutionPolicy bypassed |
+| 2024-01-05T10:xx:xxZ | **Sonia Gose** | plink.exe executed — reverse SSH tunnel to attacker server on port 3389 (RDP) |
+| 2024-01-05T10:xx:xxZ | **Sonia Gose** | Attacker ($had0w) runs discovery commands via cmd.exe |
+| 2024-01-10T08:48:16Z | **Ronnie McLovin** | Phishing email received — job offer lure from same attacker sender |
+| 2024-01-10T08:55:07Z | **Ronnie McLovin** | Editorial_J0b_Openings_2024.docx downloaded — GET request confirmed |
+| 2024-01-10T08:xx:xxZ | **Ronnie McLovin** | PowerShell payload dropped to A37A-DESKTOP |
+| 2024-01-31 | **Clark Kent** | Email sent from ronnie_mclovin@valdoriantimes.news (compromised) with OpEdFinal_to_print.docx |
+| Publication Day | **Valdorian Times** | Falsified article about candidate Luffy published |
+
+---
+
+## Section 6 — Master IOC List
+
+### IP Addresses
+
+| Indicator | Context |
+|-----------|---------|
+| **10.10.0.3** | Sonia Gose — UL0M-MACHINE (victim) |
+| **10.10.0.19** | Ronnie McLovin — A37A-DESKTOP (victim) |
+| **10.10.0.22** | Lois Lane (reconnaissance data point) |
+
+### Domains & URLs
+
+| Indicator | Context |
+|-----------|---------|
+| **promotionrecruit.com** | Attacker-controlled — used to deliver Sonia's payload |
+| **promotionrecruit.org** | Attacker-controlled — used to deliver Ronnie's payload |
+| **valdorias_best_recruiter@gmail.com** | Attacker email used for both phishing campaigns |
+
+### Files & Hashes
+
+| Indicator | Context |
+|-----------|---------|
+| **Valdorian_Times_Editorial_Offer_Letter.docx** | Malicious docx — Sonia Gose lure |
+| **SHA256** | `60b854332e393a6a2f0015383969c3ac705126a6b7829b762057a3994967a61f` |
+| **hacktivist_manifesto.ps1** | PowerShell payload — dropped on UL0M-MACHINE |
+| **plink.exe** | PuTTY SSH client used for reverse tunnel (C2) |
+| **Editorial_J0b_Openings_2024.docx** | Malicious docx — Ronnie McLovin lure |
+| **OpEdFinal_to_print.docx** | Fraudulent article emailed to Clark Kent |
+
+### Credentials & Identifiers
+
+| Indicator | Context |
+|-----------|---------|
+| **$had0w** | Attacker username on remote SSH server |
+| **thruthW!llS3tUfree** | Attacker password found in plaintext in plink command |
+| **sogose** | Compromised Windows username — Sonia Gose |
+| **UL0M-MACHINE** | Compromised hostname — Sonia Gose |
+| **A37A-DESKTOP** | Compromised hostname — Ronnie McLovin |
+
+---
+
+## Section 7 — Query Reference (KQL)
+
+### Employee Lookups
+
+```kql
+Employees | count
+Employees | where role == "Editorial Director"
+Employees | where name == "Sonia Gose"
+Employees | where role == "Editorial Intern"
+```
+
+### Email Analysis
+
+```kql
+Email | where recipient == "nene_leaks@valdoriantimes.news" | count
+Email | where recipient has "clark_kent@valdoriantimes.news"
+Email | where sender has "valdorias_best_recruiter@gmail.com"
+Email | where sender has "valdorias_best_recruiter@gmail.com"
+| and recipient has "ronnie_mclovin@valdoriantimes.news"
+```
+
+### Network Events
+
+```kql
+OutboundNetworkEvents | where src_ip == "10.10.0.3"
+| and url == "https://promotionrecruit.com/published/Valdorian_Times_Editorial_Offer_Letter.docx"
+OutboundNetworkEvents | where url has "https://promotionrecruit.org/share/Editorial_J0b_Openings_2024.docx"
+OutboundNetworkEvents | where src_ip == "10.10.0.22" | distinct url | count
+```
+
+### File Creation Events
+
+```kql
+FileCreationEvents | where hostname == "UL0M-MACHINE"
+| and filename == "Valdorian_Times_Editorial_Offer_Letter.docx"
+FileCreationEvents | where filename has "Editorial_J0b_Openings_2024.docx"
+| and hostname has "A37A-DESKTOP"
+```
+
+### Process Events
+
+```kql
+ProcessEvents | where hostname == "UL0M-MACHINE" and username == "sogose"
+| and process_commandline contains ".ps1"
+ProcessEvents | where username == "sogose"
+| and process_commandline contains "plink.exe"
+ProcessEvents | where hostname == "UL0M-MACHINE"
+| where process_parent_name contains "cmd.exe"
+```
+
+### Multi-Table Pivot (let variable)
+
+```kql
+let mary_ips =
+Employees | where name has "Mary" | distinct ip_addr;
+OutboundNetworkEvents | where src_ip in (mary_ips) | count
+
+let mary_users = Employees | where name has "Mary" | distinct username;
+AuthenticationEvents | where username in (mary_users) | count
+```
+
+---
+
+## Section 8 — Skills Demonstrated
+
+- Log correlation across multiple data sources (Email, OutboundNetworkEvents, FileCreationEvents, ProcessEvents, AuthenticationEvents, PassiveDNS)
+- Threat hunting using KQL/SPL-style query language — filtering, distinct, count, let variables, in() pivots
+- IOC extraction and tracking: IP addresses, domains, file hashes, usernames, hostnames, timestamps
+- Attack timeline reconstruction using timestamp correlation
+- **MITRE ATT&CK technique identification:**
+  - Phishing (T1566)
+  - Scheduled Task (T1053)
+  - PowerShell (T1059.001)
+  - SSH Tunneling (T1572)
+  - RDP (T1021.001)
+  - Discovery commands (T1016/T1033/T1082)
+- Forensic investigation of a multi-stage, multi-victim intrusion campaign
+- Incident documentation and structured security reporting
+
+---
+
+> *KC7 Cybersecurity Challenge • Valdorian Times Incident • Analyst: Kamau James Kimani*

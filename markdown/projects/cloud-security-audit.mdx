@@ -1,0 +1,58 @@
+---
+title: "Cloud Security Posture Review"
+category: "CLOUD SECURITY"
+description: "Conducted a full security audit of AWS and Azure environments for a fintech client. Identified 47 misconfigurations and implemented CIS benchmarks, reducing the attack surface by 80%."
+thumbnail: "/images/projects/cloud-security.jpg"
+tags: ["AWS", "Azure", "Cloud Security", "CIS Benchmarks"]
+---
+
+# Cloud Security Posture Review
+
+## Overview
+
+Conducted a comprehensive security assessment of a fintech client's multi-cloud environment spanning AWS and Azure, identifying critical misconfigurations and compliance gaps.
+
+## Assessment Scope
+
+### AWS Environment
+- 3 VPCs across 2 regions
+- 45 EC2 instances
+- 12 S3 buckets
+- 8 RDS databases
+- IAM policies and roles
+
+### Azure Environment
+- 2 resource groups
+- 20 Virtual Machines
+- 6 Storage Accounts
+- Azure AD configuration
+
+## Key Findings
+
+### Critical (8 findings)
+- Publicly exposed S3 buckets containing PII
+- Overprivileged IAM roles with wildcard permissions
+- Unencrypted RDS databases at rest
+
+### High (15 findings)
+- Missing MFA on privileged accounts
+- Default security groups allowing all traffic
+- Unpatched EC2 instances with known CVEs
+
+### Medium (24 findings)
+- Missing CloudTrail logging in secondary regions
+- No automated backup policies
+- Weak password policies in Azure AD
+
+## Remediation
+
+- Implemented CIS AWS Foundations Benchmark v1.5
+- Deployed AWS Config for continuous compliance monitoring
+- Enabled GuardDuty for threat detection
+- Established automated remediation using Lambda functions
+
+## Results
+
+- **Attack Surface**: Reduced by 80%
+- **Compliance Score**: Improved from 42% to 94%
+- **Critical Findings**: All resolved within 2 weeks
