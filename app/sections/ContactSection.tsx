@@ -45,7 +45,7 @@ export function ContactSection() {
             </h2>
             <p className="font-body text-base text-text-secondary leading-relaxed mt-3 max-w-[600px]">
               Ready to strengthen your security posture or discuss a role? I
-              respond to all inquiries within 24-48 hours. Let's build something
+              respond to all inquiries within 24-48 hours. Let&apos;s build something
               secure together.
             </p>
           </div>
@@ -65,7 +65,7 @@ export function ContactSection() {
                     href="mailto:analyst@secops.dev"
                     className="font-body text-sm text-text-secondary hover:text-primary transition-colors duration-200"
                   >
-                    analyst@secops.dev
+                    kamaujames1230@gmail.com
                   </a>
                 </div>
               </div>
@@ -79,12 +79,12 @@ export function ContactSection() {
                     LinkedIn
                   </h3>
                   <a
-                    href="#"
+                    href="https://www.linkedin.com/in/james-kamau-24657b377/"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="font-body text-sm text-text-secondary hover:text-primary transition-colors duration-200"
                   >
-                    linkedin.com/in/secops-analyst
+                    https://www.linkedin.com/in/james-kamau-24657b377/
                   </a>
                 </div>
               </div>

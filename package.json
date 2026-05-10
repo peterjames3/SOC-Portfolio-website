@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "optimize-images": "sharp -i ./public/*.{png,jpg} -o ./public/ --format webp --quality 80"
+
   },
   "dependencies": {
     "@emailjs/browser": "^4.4.1",

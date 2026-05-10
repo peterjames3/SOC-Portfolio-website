@@ -24,7 +24,7 @@ const projects = [
     title: "Enterprise SIEM Dashboard",
     description:
       "Designed and deployed a comprehensive SIEM dashboard aggregating logs from 200+ endpoints. Built custom correlation rules that reduced false positives by 65% and improved mean-time-to-detect by 40%.",
-    image: "/images/projects/siem-dashboard.jpg",
+    image: "/images/projects/siem-dashboard.webp",
     link: "#",
   },
   {
@@ -32,7 +32,7 @@ const projects = [
     title: "APT Threat Hunt Campaign",
     description:
       "Led a proactive threat hunting initiative that uncovered a sophisticated persistent threat operating undetected for 8 months. Developed custom detection logic now deployed across the organization's infrastructure.",
-    image: "/threat-hunt.png",
+    image: "/threat-hunt.webp",
     link: "#",
   },
   {
@@ -40,7 +40,7 @@ const projects = [
     title: "Incident Response Playbook Suite",
     description:
       "Created a comprehensive library of 15+ incident response playbooks covering ransomware, data exfiltration, insider threats, and supply chain attacks. Reduced average response time from 4 hours to 45 minutes.",
-    image: "/incident-response.png",
+    image: "/incident-response.webp",
     link: "#",
   },
   {
@@ -48,7 +48,7 @@ const projects = [
     title: "Malware Analysis Lab",
     description:
       "Built an isolated malware analysis laboratory with automated sandboxing capabilities. Reverse-engineered 30+ malware samples to extract IOCs and develop YARA rules for enterprise-wide detection.",
-    image: "/malware-analysis.jpg",
+    image: "/malware-analysis.webp",
     link: "#",
   },
   {
@@ -56,7 +56,7 @@ const projects = [
     title: "Cloud Security Posture Review",
     description:
       "Conducted a full security audit of AWS and Azure environments for a fintech client. Identified 47 misconfigurations and implemented CIS benchmarks, reducing the attack surface by 80%.",
-    image: "/cloud-security.png",
+    image: "/cloud-security.webp",
     link: "#",
   },
   {
@@ -64,7 +64,7 @@ const projects = [
     title: "Vulnerability Management Program",
     description:
       "Established an enterprise vulnerability management lifecycle from discovery to remediation. Integrated Tenable.sc with ServiceNow for automated ticket creation and SLA tracking.",
-    image: "/vuln-management.png",
+    image: "/vuln-management.webp",
     link: "#",
   },
 ];

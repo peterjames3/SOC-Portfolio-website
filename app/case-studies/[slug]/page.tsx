@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { MDXRemote } from "next-mdx-remote/rsc";
 import remarkGfm from "remark-gfm";
+import NextImage from "next/image";
 import rehypeHighlight from "rehype-highlight";
 import {
   getAllCaseStudySlugs,
@@ -96,6 +97,20 @@ const mdxComponents = {
       className="list-disc list-inside font-body text-[15px] leading-relaxed text-text-secondary mb-4 space-y-1.5 marker:text-primary"
       {...props}
     />
+  ),
+  Image: ({ src, alt }: { src: string; alt: string }) => (
+    <div
+      className="relative w-full my-6 rounded-lg border border-border overflow-hidden"
+      style={{ minHeight: "300px" }}
+    >
+      <NextImage // ← use NextImage here
+        src={src}
+        alt={alt}
+        fill
+        sizes="100vw"
+        className="object-contain"
+      />
+    </div>
   ),
   ol: (props: React.OlHTMLAttributes<HTMLOListElement>) => (
     <ol
@@ -207,16 +222,18 @@ export default async function CaseStudyPage({
             </div>
 
             {/* Tags */}
-            <div className="flex flex-wrap gap-2 mt-6">
-              {frontmatter.tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="px-3 py-1 border border-border rounded-sm font-mono text-[11px] font-normal tracking-[0.05em] text-text-secondary bg-[rgba(26,20,18,0.6)]"
-                >
-                  {tag}
-                </span>
-              ))}
-            </div>
+           {frontmatter.tags && frontmatter.tags.length > 0 && (
+  <div className="flex flex-wrap gap-2 mt-6">
+    {frontmatter.tags.map((tag) => (
+      <span
+        key={tag}
+        className="px-3 py-1 border border-border rounded-sm font-mono text-[11px] font-normal tracking-[0.05em] text-text-secondary bg-[rgba(26,20,18,0.6)]"
+      >
+        {tag}
+      </span>
+    ))}
+  </div>
+)}
           </div>
         </section>
 

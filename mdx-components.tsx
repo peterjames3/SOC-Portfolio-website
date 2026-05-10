@@ -23,13 +23,16 @@ export function useMDXComponents(components: MDXComponents): MDXComponents {
         {children}
       </p>
     ),
-    img: ({ alt, ...props }) => (
-      <Image
-        sizes="100vw"
-        style={{ width: "100%", height: "auto" }}
-        {...(props as ImageProps)}
-        alt={alt ?? "image"}
-      />
+    Image: ({ src, alt }: { src: string; alt: string }) => (
+      <div className="relative w-full my-6 rounded-lg border border-border overflow-hidden">
+        <Image
+          src={src}
+          alt={alt}
+          fill
+          sizes="100vw"
+          className="object-contain"
+        />
+      </div>
     ),
     a: ({ href, children }) => (
       <a
