@@ -55,7 +55,7 @@ export function Footer() {
   return (
     <footer className="bg-[#0A0807] border-t border-border">
       <div className="max-w-[1280px] mx-auto px-6 md:px-12 lg:px-16 py-16">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10 lg:gap-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-10 lg:gap-8">
           {/* Brand */}
           <div>
             <span className="font-mono text-base font-medium tracking-[0.1em] text-text-primary block mb-3">
@@ -139,14 +139,13 @@ export function Footer() {
             &copy; {new Date().getFullYear()} James Kamau. All rights reserved.
           </p>
         {/* Copyright */}
-      <div className="text-sm text-gray-400 text-center pt-4">
-        © {new Date().getFullYear()} TestHelpNow. All rights reserved. <br />
-        Designed & built with ❤️ by{" "}
+      <div className="text-xs flex items-center gap-5">
+       <p>Designed & built with ❤️ by{" "}</p>
         <a
           href="https://celadon-concha-2bec16.netlify.app/"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-white font-semibold"
+          className="font-body text-xs text-text-tertiary"
         >
           KItechCreatives
         </a>

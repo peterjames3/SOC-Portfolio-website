@@ -1,8 +1,9 @@
 interface FormValues {
   name: string;
   email: string;
-  phone: string;
+  // phone: string;
   message: string;
+  subject: string;
   [key: string]: string;
 }
 
@@ -26,14 +27,19 @@ export const validate = (values: FormValues) => {
   }
 
   // Phone
-  if (!values.phone) {
-    errors.phone = "Phone number is required";
-  } else if (
-    !/^[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4,6}$/im.test(values.phone)
-  ) {
-    errors.phone = "Invalid phone number";
+  // if (!values.phone) {
+  //   errors.phone = "Phone number is required";
+  // } else if (
+  //   !/^[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4,6}$/im.test(values.phone)
+  // ) {
+  //   errors.phone = "Invalid phone number";
+  // }
+  // Subject
+  if (!values.subject) {
+    errors.subject = "Subject is required";
+  } else if (values.subject.length < 5) {
+    errors.subject = "Subject must be at least 5 characters";
   }
-
   // Message
   if (!values.message) {
     errors.message = "Message is required";

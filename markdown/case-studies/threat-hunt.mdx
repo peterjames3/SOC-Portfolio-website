@@ -22,7 +22,7 @@ status: "Completed"
 # KC7 Cybersecurity Challenge — Incident Investigation Report
 
 > **Operation: Valdorian Times**
-> Analyst: Kamau James Kimani | Date: April 2026 | Classification: Training / Practice
+> Analyst: Kamau James Kimani | Date: April 2026 | Classification: Training / Practice /
 
 ---
 
@@ -73,13 +73,6 @@ Email
 | where recipient == "nene_leaks@valdoriantimes.news"
 | count
 ```
-
-<Image
-  src="/editorial-director.png"
-  alt="Phishing email received by Sonia Gose"
-  width={1600}
-  height={450}
-/>
 
 ![an Image of Number of emails sent by Editotial Directo](/editorial-director.png)
 
@@ -179,7 +172,7 @@ OutboundNetworkEvents
 ```
 
 ![an Image showing outbound network connection](/outbound-network-connection.png)
-![an Image showing the url of the url used to download the doc](/url-of-the-downloaded-doc.png)
+![an Image showing the url of the url used to download the doc](/url- downloaded-doc.png)
 
 <Callout type="confirmed">
   **CONFIRMED:** An outbound GET request matching the phishing URL was observed
@@ -213,7 +206,7 @@ ProcessEvents
 | where hostname == "UL0M-MACHINE" and username == "sogose" and process_commandline contains ".ps1"
 ```
 
-[!image show the output of the above filter](/ps1-command.png)
+![image show the output of the above filter](/ps1-command.png)
 
 | Field           | Value                    |
 | --------------- | ------------------------ |
@@ -237,7 +230,7 @@ schtasks /create /sc hourly /mo 5 /tn "hacktivist Manifesto" /tr "powershell.exe
 | **Script Path** | C:\ProgramData\hacktivist_manifesto.ps1 |
 | **Bypass**      | -ExecutionPolicy Bypass                 |
 
-[!hacktivist_manifesto script](/ps1-script.png)
+![hacktivist_manifesto script](/ps1-script.png)
 
 ### 3.6 Reverse SSH Tunnel — plink.exe
 
@@ -252,7 +245,7 @@ ProcessEvents
 | where username == "sogose" and process_commandline contains "plink.exe"
 ```
 
-[!Filtering for plink.exe](/plink-execution.png)
+![Filtering for plink.exe](/plink-execution.png)
 
 | Field              | Value                                   |
 | ------------------ | --------------------------------------- |
@@ -277,7 +270,7 @@ ProcessEvents
 
 Through the above approach I managed to those commands.
 
-[!command observed](/commands-observed.png)
+![command observed](/commands-observed.png)
 
 **Command categories observed:**
 

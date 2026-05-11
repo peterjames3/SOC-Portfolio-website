@@ -23,6 +23,7 @@ export default function Home() {
         <ServicesSection />
         <CertificationsSection />
         <ContactSection />
+      
       </main>
       <Footer />
     </>

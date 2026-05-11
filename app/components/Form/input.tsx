@@ -13,7 +13,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
       <div className={`w-full ${containerClass || ""}`}>
         <div className="w-full flex items-center justify-between mb-1">
           {label && (
-            <label className="block font-medium text-gray-700">
+            <label className="block font-body text-xs font-medium uppercase trancking-[0.08rem] text-text-tertiary">
               {label}
               {required && <span className="text-red-500 ml-1">*</span>}
             </label>
@@ -25,9 +25,9 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
           )}
         </div>
         <input
-          className={`w-full px-4 py-2.5 rounded-md border ${
-            error ? "border-red-500" : "border-gray-300"
-          } focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent ${
+          className={`w-full px-4 py-3 bg-surface font-body text-sm text-text-primary placeholder:text-text-tertiary transitiona-all duration-200  rounded-md border ${
+            error ? "border-red-500" : "border-border"
+          } focus:border-primary focus:shadow-[0_0_0_3px_rgba(232,104,26,0.1)] focus:outline-none ${
             className || ""
           }`}
           ref={ref}

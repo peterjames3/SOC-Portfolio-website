@@ -1,11 +1,13 @@
 "use client";
-import  { useContactForm } from "./useContactForm";
+import ReCAPTCHA from "react-google-recaptcha";
+import { useContactForm } from "./useContactForm";
 import Input from "./input";
 import TextArea from "./text-area";
 import { PrimaryButton } from "@/app/components/PrimaryButton";
+
 export const ContactForm = () => {
-  const { formik, isSubmitting } = useContactForm();
-  
+  const { formik, isSubmitting, recaptchaRef } = useContactForm();
+
   return (
     <form onSubmit={formik.handleSubmit} className="space-y-5">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
@@ -21,10 +23,7 @@ export const ContactForm = () => {
           onBlur={formik.handleBlur}
           error={formik.touched.name ? formik.errors.name : undefined}
         />
-        <div>
-         
-      </div>
-<Input
+        <Input
           id="email"
           name="email"
           type="email"
@@ -37,39 +36,41 @@ export const ContactForm = () => {
           error={formik.touched.email ? formik.errors.email : undefined}
         />
       </div>
-      <div>
-        <TextArea
-          id="subject"
-          name="subject"
-          rows={5}
-          label="Message"
-          placeholder="What is this about?"
-          required
-          value={formik.values.message}
-          onChange={formik.handleChange}
-          onBlur={formik.handleBlur}
-          error={formik.touched.message ? formik.errors.message : undefined}
+
+      <Input
+        id="subject"
+        name="subject"
+        type="text"
+        label="Subject"
+        placeholder="What is this about?"
+        required
+        value={formik.values.subject}
+        onChange={formik.handleChange}
+        onBlur={formik.handleBlur}
+        error={formik.touched.subject ? formik.errors.subject : undefined}
+      />
+
+      <TextArea
+        id="message"
+        name="message"
+        rows={5}
+        label="Message"
+        placeholder="How can I help you?"
+        required
+        value={formik.values.message}
+        onChange={formik.handleChange}
+        onBlur={formik.handleBlur}
+        error={formik.touched.message ? formik.errors.message : undefined}
+      />
+      <div className="flex  items-center  justify-between">
+        <PrimaryButton>
+          {isSubmitting ? "Sending..." : "Send Message"}
+        </PrimaryButton>
+        <ReCAPTCHA
+          ref={recaptchaRef}
+          sitekey={process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY!}
         />
       </div>
-
-      <div>
-        <TextArea
-          id="message"
-          name="message"
-          rows={5}
-          label="Message"
-          placeholder="How can we help you?"
-          required
-          value={formik.values.message}
-          onChange={formik.handleChange}
-          onBlur={formik.handleBlur}
-          error={formik.touched.message ? formik.errors.message : undefined}
-        />
-      </div>
-
-      <PrimaryButton>
-        {isSubmitting ? "Message Sent ✓" : "Send Message"}
-      </PrimaryButton>
     </form>
   );
-  }
+};

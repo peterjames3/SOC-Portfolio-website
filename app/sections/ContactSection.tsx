@@ -1,31 +1,13 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+
 import { SectionLabel } from "../components/SectionLabel";
-import { PrimaryButton } from "../components/PrimaryButton";
 import { useIntersectionObserver } from "../hooks/useIntersectionObserver";
 import { Mail, MessageSquare, Clock } from "lucide-react";
-
+import { ContactForm } from "@/app/components/Form/contact-form"
 export function ContactSection() {
   const { ref, isVisible } = useIntersectionObserver({ threshold: 0.1 });
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    subject: "",
-    message: "",
-  });
-  const [submitted, setSubmitted] = useState(false);
-
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    // Simulate form submission
-    setSubmitted(true);
-    setTimeout(() => {
-      setSubmitted(false);
-      setFormData({ name: "", email: "", subject: "", message: "" });
-    }, 3000);
-  };
-
+  
   return (
     <section id="contact" className="py-20 md:py-32">
       <div className="max-w-[1280px] mx-auto px-6 md:px-12 lg:px-16">
@@ -123,75 +105,7 @@ export function ContactSection() {
 
             {/* Contact Form */}
             <div className="lg:col-span-3">
-              <form onSubmit={handleSubmit} className="space-y-5">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                  <div>
-                    <label className="block font-body text-xs font-medium uppercase tracking-[0.08em] text-text-tertiary mb-2">
-                      Full Name *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={formData.name}
-                      onChange={(e) =>
-                        setFormData({ ...formData, name: e.target.value })
-                      }
-                      className="w-full bg-surface border border-border rounded-sm px-4 py-3 font-body text-sm text-text-primary placeholder:text-text-tertiary transition-all duration-200 focus:border-primary focus:shadow-[0_0_0_3px_rgba(232,104,26,0.1)] focus:outline-none"
-                      placeholder="Your name"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-body text-xs font-medium uppercase tracking-[0.08em] text-text-tertiary mb-2">
-                      Email Address *
-                    </label>
-                    <input
-                      type="email"
-                      required
-                      value={formData.email}
-                      onChange={(e) =>
-                        setFormData({ ...formData, email: e.target.value })
-                      }
-                      className="w-full bg-surface border border-border rounded-sm px-4 py-3 font-body text-sm text-text-primary placeholder:text-text-tertiary transition-all duration-200 focus:border-primary focus:shadow-[0_0_0_3px_rgba(232,104,26,0.1)] focus:outline-none"
-                      placeholder="you@company.com"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block font-body text-xs font-medium uppercase tracking-[0.08em] text-text-tertiary mb-2">
-                    Subject
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.subject}
-                    onChange={(e) =>
-                      setFormData({ ...formData, subject: e.target.value })
-                    }
-                    className="w-full bg-surface border border-border rounded-sm px-4 py-3 font-body text-sm text-text-primary placeholder:text-text-tertiary transition-all duration-200 focus:border-primary focus:shadow-[0_0_0_3px_rgba(232,104,26,0.1)] focus:outline-none"
-                    placeholder="What's this about?"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-body text-xs font-medium uppercase tracking-[0.08em] text-text-tertiary mb-2">
-                    Message *
-                  </label>
-                  <textarea
-                    required
-                    rows={5}
-                    value={formData.message}
-                    onChange={(e) =>
-                      setFormData({ ...formData, message: e.target.value })
-                    }
-                    className="w-full bg-surface border border-border rounded-sm px-4 py-3 font-body text-sm text-text-primary placeholder:text-text-tertiary transition-all duration-200 focus:border-primary focus:shadow-[0_0_0_3px_rgba(232,104,26,0.1)] focus:outline-none resize-none"
-                    placeholder="Tell me about your project, role, or security challenge..."
-                  />
-                </div>
-
-                <PrimaryButton>
-                  {submitted ? "Message Sent ✓" : "Send Message"}
-                </PrimaryButton>
-              </form>
+              <ContactForm />
             </div>
           </div>
         </div>
