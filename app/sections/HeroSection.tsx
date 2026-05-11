@@ -28,11 +28,11 @@ export function HeroSection() {
           {/* Location Tag */}
           <div className="flex items-center gap-4 mb-8">
             <span className="font-mono text-[11px] font-normal tracking-[0.1em] uppercase text-primary">
-              Nairobi, Kenya
+             Nairobi, Kenya
             </span>
             <span className="w-12 h-px bg-border-light" />
             <span className="font-mono text-[11px] font-normal tracking-[0.1em] uppercase text-text-tertiary">
-              Est. 2020
+              Est. 2024
             </span>
           </div>
 

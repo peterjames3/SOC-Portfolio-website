@@ -27,34 +27,47 @@ export function AboutSection() {
 
               <div className="space-y-4 font-body text-base text-text-secondary leading-relaxed">
                 <p>
-                  I am a Security Operations Center Analyst with a deep passion
-                  for understanding the tactics, techniques, and procedures of
-                  threat actors. My work sits at the intersection of defensive
-                  security, data analysis, and forensic investigation — turning
-                  raw telemetry into actionable threat intelligence.
+                  I&apos;m James Kamau, a Security Operations Center Analyst
+                  based in Nairobi, Kenya. My work sits at the intersection of
+                  threat detection, incident response, and IT controls
+                  assessment — I dig into logs, correlate events across data
+                  sources, and build a clear picture of what happened, how, and
+                  what to do next.
                 </p>
                 <p>
-                  Over the past three years, I have built and optimized security
-                  monitoring pipelines, led incident response efforts for
-                  critical breaches, and developed automated detection
-                  capabilities that catch threats traditional signatures miss. I
-                  believe the best security is invisible — seamless protection
-                  that lets organizations operate without fear.
+                  My practical experience spans both professional engagements
+                  and independent investigation. As an IT Audit Analyst at EBN
+                  Advisory LLP, I review security controls, investigate
+                  suspicious events using log data, and produce audit-ready
+                  reports that clients can act on. In parallel, I&apos;ve conducted
+                  full forensic investigations through platforms like Elastic
+                  Security and the KC7 Cybersecurity Challenge — including a
+                  multi-stage phishing and lateral movement case where I traced
+                  an attacker from initial email delivery all the way to
+                  fraudulent content being published.
                 </p>
                 <p>
-                  My approach begins with curiosity. I don't just respond to
-                  alerts — I dig into the "why" behind them, hunting for the
-                  subtle anomalies that indicate compromise. The result is a
-                  security posture that is not just reactive, but predictive.
+                  My approach begins with curiosity. I don&apos;t just respond
+                  to alerts — I dig into the &apos;why&apos; behind them,
+                  hunting for the subtle anomalies that indicate compromise. The
+                  result is a security posture that is not just reactive, but
+                  predictive.
+                </p>
+                <p>
+                  I&apos;m currently working toward my ISC2 Cybersecurity
+                  certification and progressing through the TryHackMe SOC Path.
+                  I&apos;m open to full-time roles and contract security engagements
+                  where I can contribute to a team that takes detection and
+                  response seriously.
                 </p>
               </div>
 
               {/* Philosophy Quote */}
               <blockquote className="mt-8 border-l-2 border-primary pl-6">
                 <p className="font-display text-lg italic text-text-primary leading-relaxed">
-                  "Security is not a product, but a process. Understand deeply.
-                  Hunt relentlessly. Respond with precision. Because in the
-                  digital world, the best defense is an informed one."
+                  &apos;Security is not a product, but a process. Understand
+                  deeply. Hunt relentlessly. Respond with precision. Because in
+                  the digital world, the best defense is an informed one.&apos;
                 </p>
               </blockquote>
             </div>
@@ -69,14 +82,13 @@ export function AboutSection() {
                 <div className="flex flex-wrap gap-2">
                   {[
                     "Splunk",
-                    "Microsoft Sentinel",
+                    "SPL Queries",
                     "Elastic SIEM",
-                    "CrowdStrike Falcon",
+                    "PowerShell",
                     "Wireshark",
                     "Suricata",
                     "YARA",
-                    "Volatility",
-                    "Cortex XDR",
+
                     "Wazuh",
                     "Osquery",
                     "MITRE ATT&CK",
@@ -123,7 +135,7 @@ export function AboutSection() {
                   Platforms
                 </h3>
                 <div className="flex flex-wrap gap-2">
-                  {["AWS", "Azure", "Linux", "Windows Server", "VMware"].map(
+                  {["Active Directory", "Azure", "Linux", "Windows Server", "VMware"].map(
                     (platform) => (
                       <span
                         key={platform}

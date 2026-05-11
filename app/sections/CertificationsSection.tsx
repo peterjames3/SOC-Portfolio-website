@@ -6,59 +6,62 @@ import { useIntersectionObserver } from "../hooks/useIntersectionObserver";
 
 const certifications = [
   {
-    title: "CompTIA Security+",
-    issuer: "CompTIA",
-    date: "Mar 2023",
-    status: "Completed" as const,
-    credentialId: "COMP-SecPlus-2023",
+    title: "Kenya Cyber Security and Forensics Association",
+    issuer: "KCSFA",
+    date: "Mar 2026",
+    status: "Active" as const,
+    credentialId: "KCSFA/S284M/2026",
     link: "#",
   },
   {
-    title: "Certified SOC Analyst (CSA)",
-    issuer: "EC-Council",
-    date: "Jul 2023",
+    title: "SOC Level 1 Path",
+    issuer: "TryHackMe",
+    date: "Ongoing",
+    status: "In Progress" as const,
+    credentialId: "undefined",
+    link: "https://tryhackme.com/p/Peterejames",
+  },
+    {
+    title: "ISC2 CC — Domain 2: Incident Response, Business Continuity & Disaster Recovery",
+    issuer: "ISC2",
+    date: "Apr 2026",
     status: "Completed" as const,
-    credentialId: "ECC-CSA-2023-7842",
+    credentialId: "b8e30030-bf84-4e5c-aee8-0596a4779708",
     link: "#",
   },
   {
-    title: "Splunk Core Certified Power User",
-    issuer: "Splunk",
-    date: "Nov 2023",
+    title: "Elastic Security for SIEM",
+    issuer: "Elastic",
+    date: "Jan 2026",
     status: "Completed" as const,
-    credentialId: "SPLK-PU-2023-4512",
+    credentialId: "C147214",
     link: "#",
   },
   {
-    title: "Microsoft Certified: Azure Security Engineer (AZ-500)",
-    issuer: "Microsoft",
-    date: "Feb 2024",
+    title: "Cybersecurity Track",
+    issuer: "Cyber Shujaa Program",
+    date: "Nov 2024",
     status: "Completed" as const,
     credentialId: "MS-AZ500-2024-3321",
     link: "#",
   },
   {
-    title: "Certified Incident Handler (ECIH)",
-    issuer: "EC-Council",
+    title: "B.Tech in Information Technology",
+    issuer: "Jomo Kenyatta University of Agriculture and Technology",
     date: "Jun 2024",
     status: "Completed" as const,
-    credentialId: "ECC-ECIH-2024-9087",
+    credentialId: "undefined",
     link: "#",
   },
-  {
-    title: "GIAC Certified Incident Handler (GCIH)",
-    issuer: "SANS/GIAC",
-    date: "Dec 2024",
-    status: "Completed" as const,
-    credentialId: "GIAC-GCIH-2024-5567",
-    link: "#",
-  },
-  {
-    title: "AWS Certified Security - Specialty",
-    issuer: "Amazon Web Services",
-    date: "Expected Aug 2025",
+    {
+    title: "ISC2 Certified in Cybersecurity (CC) — Full Exam",
+    issuer: "ISC2",
+    date: "In Progress",
     status: "In Progress" as const,
+    credentialId: undefined,
+    link: "https://www.isc2.org/certifications/cc",
   },
+ 
 ];
 
 export function CertificationsSection() {
@@ -79,7 +82,7 @@ export function CertificationsSection() {
           <div className="mb-12">
             <SectionLabel label="CERTIFICATIONS" />
             <h2 className="font-display text-[28px] md:text-[42px] font-normal leading-[1.15] text-text-primary mt-4">
-              Credentials & Learning
+              Credentials, Learning & Membership
             </h2>
             <p className="font-body text-base text-text-secondary leading-relaxed mt-3 max-w-[600px]">
               Continuous learning is the foundation of effective security

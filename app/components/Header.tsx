@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useState, useEffect } from "react";
 import { useScrollProgress } from "../hooks/useScrollProgress";
 import { Menu, X } from "lucide-react";
@@ -47,7 +48,7 @@ export function Header() {
   return (
     <>
       <header
-        className={`fixed top-0 left-0 right-0 z-50 h-[72px] flex items-center transition-all duration-300 ${
+        className={`fixed top-0 left-0 right-0 z-50 h-[80px] flex items-center transition-all duration-300 ${
           scrolled
             ? "bg-[rgba(13,10,9,0.85)] backdrop-blur-xl border-b border-[rgba(42,32,28,0.5)]"
             : "bg-transparent border-b border-transparent"
@@ -61,9 +62,36 @@ export function Header() {
               e.preventDefault();
               window.scrollTo({ top: 0, behavior: "smooth" });
             }}
-            className="font-mono text-base font-medium tracking-[0.1em] text-text-primary hover:text-primary transition-colors duration-200"
+            className="flex items-center gap-2.5 group"
           >
-            SEC.OPS
+            {/* Avatar ring */}
+            <div className="w-[38px] h-[38px] rounded-full p-[2px] bg-gradient-to-br from-primary via-[#ff9a5c] to-primary flex-shrink-0">
+              <div className="w-full h-full rounded-full bg-background overflow-hidden flex items-center justify-center">
+                {/* Swap src to your actual photo e.g. /images/james.jpg */}
+                <Image
+                  src="/passport 2.png"
+                  alt="James Kamau"
+                  width={400}
+                  height={7600}
+                  quality={80}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    e.currentTarget.style.display = "none";
+                    e.currentTarget.parentElement!.innerHTML =
+                      '<span class="font-mono text-[13px] font-semibold text-primary">JK</span>';
+                  }}
+                />
+              </div>
+            </div>
+            {/* Name + title */}
+            <div className="flex flex-col gap-[3px]">
+              <span className="font-body text-[18px] font-semibold text-text-primary leading-none tracking-[0.01em] group-hover:text-primary transition-colors duration-200">
+                James Kamau
+              </span>
+              <span className="font-mono text-[14px] text-text-tertiary leading-none tracking-[0.04em]">
+                SOC Analyst
+              </span>
+            </div>
           </a>
 
           {/* Desktop Nav */}

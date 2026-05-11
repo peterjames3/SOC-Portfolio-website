@@ -136,11 +136,21 @@ export function Footer() {
         {/* Bottom Bar */}
         <div className="mt-12 pt-8 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="font-body text-xs text-text-tertiary">
-            &copy; {new Date().getFullYear()} SEC.OPS. All rights reserved.
+            &copy; {new Date().getFullYear()} James Kamau. All rights reserved.
           </p>
-          <p className="font-mono text-[10px] text-text-tertiary tracking-wider uppercase">
-            Built with precision
-          </p>
+        {/* Copyright */}
+      <div className="text-sm text-gray-400 text-center pt-4">
+        © {new Date().getFullYear()} TestHelpNow. All rights reserved. <br />
+        Designed & built with ❤️ by{" "}
+        <a
+          href="https://celadon-concha-2bec16.netlify.app/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-white font-semibold"
+        >
+          KItechCreatives
+        </a>
+      </div>
         </div>
       </div>
     </footer>

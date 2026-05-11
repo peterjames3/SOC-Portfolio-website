@@ -24,7 +24,7 @@ const projects = [
     title: "Enterprise SIEM Dashboard",
     description:
       "Designed and deployed a comprehensive SIEM dashboard aggregating logs from 200+ endpoints. Built custom correlation rules that reduced false positives by 65% and improved mean-time-to-detect by 40%.",
-    image: "/images/projects/siem-dashboard.webp",
+    image: "/siem-dashboard.webp",
     link: "#",
   },
   {
@@ -40,7 +40,7 @@ const projects = [
     title: "Incident Response Playbook Suite",
     description:
       "Created a comprehensive library of 15+ incident response playbooks covering ransomware, data exfiltration, insider threats, and supply chain attacks. Reduced average response time from 4 hours to 45 minutes.",
-    image: "/incident-response.webp",
+    image: "/incident-response-playbook.webp",
     link: "#",
   },
   {
@@ -191,6 +191,9 @@ function CaseStudyRow({
             width="400"
             height="200"
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+             onError={(e) => {
+    e.currentTarget.src = "/incident-response-playbook.webp";
+  }}
           />
         </div>
 
@@ -220,7 +223,7 @@ function CaseStudyRow({
 
           {/* Tags */}
           <div className="flex flex-wrap gap-1.5 mt-3">
-            {study.tags.slice(0, 5).map((tag) => (
+            {study.tags ?? [].slice(0, 5).map((tag) => (
               <span
                 key={tag}
                 className="px-2 py-0.5 border border-border rounded-sm font-mono text-[10px] text-text-tertiary"
