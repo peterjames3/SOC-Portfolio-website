@@ -1,0 +1,513 @@
+---
+title: "Syscalls: The Ground Truth of Linux Threat Detection"
+category: "THREAT DETECTION"
+description: "A deep dive into Linux syscalls using strace — understanding execve, file descriptors, and mmap patterns to write Falco detection rules from first principles."
+thumbnail: "/Priv_rings.svg"
+date: "May 2026"
+classification: "Technical / Educational"
+challenge: "Detection Engineering Series — Day 1"
+analyst: "Kamau James Kimani"
+tags:
+  [
+    "Linux",
+    "Syscalls",
+    "Falco",
+    "strace",
+    "eBPF",
+    "Threat Detection",
+    "Blue Team",
+  ]
+status: "Completed"
+---
+
+# Syscalls: The Ground Truth of Linux Threat Detection
+
+> **Detection Engineering Series — Day 1**
+> Analyst: Kamau James Kimani | Date: May 2026 | Classification: Training / Educational
+
+---
+
+## Executive Summary
+
+Most people know that `ls` lists files. Run `strace ls` and over 100 system calls fire before a single filename hits your terminal. That gap between what a command _appears_ to do and what the kernel _actually sees_ is exactly where threat detection lives.
+
+This post builds up syscall intuition from first principles: what syscalls are, why they exist, how `execve` and file descriptors work, and how all of it connects directly to writing Falco detection rules.
+
+<Callout type="key">
+  **KEY INSIGHT:** Syscalls are the ground truth of what a process is actually
+  doing. A reverse shell is just `socket()` → `connect()` → `dup2()` →
+  `execve()`. Strip away the malware name — what remains is a sequence drawn
+  from roughly 300–400 possible syscalls, and that sequence does not lie.
+</Callout>
+
+---
+
+## Section 1 — What is a Syscall?
+
+The Linux kernel operates in **kernel space**: a protected, privileged environment with full hardware access. Every application runs in **user space** ; a heavily restricted environment that cannot directly touch hardware. This separation is enforced through CPU privilege levels called **rings**.
+![linux ring](/Priv_rings.svg)
+
+| Ring   | Name         | What Lives Here                                       |
+| ------ | ------------ | ----------------------------------------------------- |
+| Ring 0 | Kernel Space | The OS kernel — full hardware access, no restrictions |
+| Ring 3 | User Space   | Every application you run — heavily restricted        |
+
+When your browser wants to read a file from disk, it cannot reach into hardware directly. It must ask the kernel to do it on its behalf. That formal ask is a **syscall**.
+
+### 1.1 Why This Mechanism Exists
+
+In early systems, programs ran with direct access to hardware and memory — any program could corrupt kernel memory, read another process's passwords, or format your disk. The syscall mechanism was designed to enforce a strict, auditable boundary: only the kernel runs with full privileges, and every interaction is mediated through a defined, controlled interface.
+
+### 1.2 Why This Matters for Detection
+
+Every malicious action an attacker takes on a Linux system will eventually express itself as a syscall. There are no exceptions.
+
+| Attack Technique     | Syscall Signature                                |
+| -------------------- | ------------------------------------------------ |
+| Reverse shell        | `socket()` → `connect()` → `dup2()` → `execve()` |
+| Privilege escalation | `setuid()` → `execve()`                          |
+| Ransomware           | `open()` → `read()` → `write()` → `unlink()`     |
+| Rootkit loading      | `init_module()` or `finit_module()`              |
+| Credential dumping   | `ptrace()` on a target process                   |
+
+---
+
+## How a Syscall Works Under the Hood
+
+ 
+When a program makes a syscall, here is what happens at the hardware and OS level:
+
+ 
+
+```
+User Space Program
+       │
+       │  1. Program places syscall number in register RAX
+       │     Arguments go in: RDI, RSI, RDX, R10, R8, R9
+       │
+       ▼
+   SYSCALL instruction  ◄──── CPU switches to Ring 0
+       │
+       │  2. CPU saves current execution state
+       │  3. Jumps to kernel's syscall handler (via MSR_LSTAR register)
+       │
+       ▼
+   Kernel validates the request
+       │
+       │  4. Looks up syscall number in the syscall table
+       │  5. Executes the appropriate kernel function
+       │  6. Places return value in RAX
+       │
+       ▼
+   SYSRET instruction  ◄──── CPU switches back to Ring 3
+       │
+       ▼
+User Space Program resumes
+```
+
+ 
+A good example is when bash runs `ls`, command and then the C library executes like the following:
+ ![linux ring](/syscall1.png)
+
+The kernel maintains a syscall table — an array where each index maps to a kernel function. Syscall 59 is `execve`. Syscall 0 is `read`. Syscall 42 is `connect`. Every process execution, every file read, every network connection maps to a number in this table. You can browse the full table at [filippo.io/linux-syscall-table](https://filippo.io/linux-syscall-table/).
+
+ 
+
+## `execve` — The Most Important Syscall for Threat Hunting
+
+Before we run `strace`, we need to spend a moment on `execve`. It is syscall number 59, and it is the most important one in your detection arsenal.
+
+ 
+`execve` replaces the current process image with a new program:
+
+```c
+execve("/bin/bash", argv, envp);
+```
+
+for our case it is
+![arguments](/arguments.png)
+
+When you type `ls` in a shell:
+
+1. The shell calls `fork()` to create a child process.
+2. That child process calls `execve("/usr/bin/ls", ["ls"], envp)`.
+3. The kernel replaces the child's memory with the `ls` binary.
+
+### Detection triggers to watch for:
+
+- `execve` called from `/tmp`, `/dev/shm`, `/var/tmp` — attackers stage payloads in writable directories.
+- `execve` with an unusual parent: a web server (`nginx`, `apache`) spawning `/bin/bash`.
+- `execve` on a file that was just written by the same process — write payload, then execute it.
+- `execve` on a file with a name that mimics a legitimate binary with subtle differences.
+
+---
+
+## `strace ls` — A Walk Through a Process's Life
+
+Now let's watch a single `ls` command from the kernel's perspective. Every line in the `strace` output is a syscall. Every syscall is a formal request to the kernel. The format is:
+
+`syscall_name(arguments) = return_value`
+
+A return value of `-1` means failure. Everything else is success.
+
+This output came from running `strace ls` on a real machine. Let's go phase by phase.
+
+### Phase 1: Process Birth
+
+```
+
+execve("/usr/bin/ls", ["ls"], 0x7fff666c2400 /_ 54 vars _/) = 0
+
+```
+
+This is the very first syscall — and the most important one. `execve` replaces the current process image with `/usr/bin/ls`. The argument list is `["ls"]`, and the third argument shows 54 environment variables inherited from the shell. Return value `0` means success.
+
+### Phase 2: Memory Setup
+
+```
+
+brk(NULL) = 0x60a2982f3000
+mmap(NULL, 8192, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0x779a0d59b000
+
+```
+
+Before `ls` does anything useful, it sets up memory.
+
+**`brk(NULL)`** queries the current end of the heap, it is not allocating anything yet, just asking "where does my heap currently end?" Almost every program does this at startup as a baseline.
+
+**`mmap`** allocates a region of memory. Let's break down the arguments:
+
+ 
+| Argument | Value | Meaning |
+|----------|-------|---------|
+| `addr` | `NULL` | Let the kernel choose the address |
+| `length` | `8192` | Allocate 8,192 bytes (2 × 4KB pages) |
+| `prot` | `PROT_READ\|PROT_WRITE` | Memory is readable and writable |
+| `flags` | `MAP_PRIVATE\|MAP_ANONYMOUS` | Private to this process, not backed by a file |
+| `fd` | `-1` | No file — this is anonymous memory |
+| `offset` | `0` | No offset |
+
+This is the dynamic linker claiming scratch space before it loads shared libraries.
+
+#### Normal vs Abnormal
+
+Normal `mmap` patterns at startup:
+
+```c
+// RW anonymous — runtime buffers, heap, stack
+mmap(NULL, 8192, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0)
+
+```
+
+```c
+// Read-only file mapping — loading a shared library
+mmap(NULL, 227848, PROT_READ, MAP_PRIVATE, 3, 0)
+```
+
+Abnormal patterns that should trigger alerts:
+
+```c
+// RWX mapping — memory that is both writable AND executable
+// Classic shellcode staging — legitimate programs almost never need this
+mmap(NULL, 4096, PROT_READ|PROT_WRITE|PROT_EXEC, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0)
+
+```
+
+```c
+// Massive anonymous allocation — cryptominer, data staging, payload unpacking
+mmap(NULL, 104857600, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0)
+```
+
+There is also a two-step attacker pattern worth memorizing. Map writable, write shellcode, then flip to executable:
+
+```c
+// Step 1 — map writable (looks innocent)
+mmap(NULL, 4096, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0x7f1234000000
+ 
+// Step 2 — write shellcode into it
+ 
+// Step 3 — make it executable (now it's dangerous)
+mprotect(0x7f1234000000, 4096, PROT_READ|PROT_EXEC)
+// W^X violation — was writable, now executable — classic shellcode staging
+```
+
+### Phase 3: Dynamic Library Loading
+
+This is the longest section of the strace output, and it happens _before `ls` itself runs_ — the dynamic linker (`ld.so`) is loading the shared libraries `ls` depends on.
+
+```
+access("/etc/ld.so.preload", R_OK) = -1 ENOENT
+openat(AT_FDCWD, "/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3
+```
+
+Two things happen here:
+
+1. **`/etc/ld.so.preload` is checked** — this file, if it exists, forces specific shared libraries to load before _every other library_ in every dynamically linked program. It is a known persistence and hooking mechanism. The `-1 ENOENT` means it doesn't exist here. **If you see a process loading an unexpected library via `/etc/ld.so.preload` on a production system, treat it as a rootkit indicator.**
+2. **`/etc/ld.so.cache` is read** — a binary index of library locations, used to avoid slow directory scans on every program launch.
+   Then three libraries are loaded in sequence:
+
+| Library           | Purpose                                          |
+| ----------------- | ------------------------------------------------ |
+| `libselinux.so.1` | SELinux access control hooks                     |
+| `libc.so.6`       | The C standard library                           |
+| `libpcre2-8.so.0` | Regex engine (used by `ls` for pattern matching) |
+
+ 
+Each library load follows an identical pattern:
+
+```
+openat(AT_FDCWD, "/lib/x86_64-linux-gnu/libc.so.6", O_RDONLY|O_CLOEXEC) = 3
+read(3, "\177ELF...", 832) = 832        ← read ELF header
+fstat(3, {..., st_size=2125328})         ← get file size
+mmap(NULL, ..., PROT_READ, ..., 3, 0)   ← map read-only data
+mmap(..., PROT_READ|PROT_EXEC, ..., 3)  ← map executable code
+mmap(..., PROT_READ|PROT_WRITE, ..., 3) ← map writable data
+close(3)                                ← done with file descriptor
+```
+
+The `mmap` permissions correspond directly to ELF segment types:
+
+- `PROT_READ|PROT_EXEC` — the `.text` segment (executable code)
+- `PROT_READ` — the `.rodata` segment (read-only constants)
+- `PROT_READ|PROT_WRITE` — the `.data` and `.bss` segments (mutable data)
+
+---
+
+### Phase 4: Thread and Runtime Setup
+
+```
+arch_prctl(ARCH_SET_FS, 0x779a0d4b7800)
+set_tid_address(0x779a0d4b7ad0)
+set_robust_list(0x779a0d4b7ae0, 24)
+rseq(0x779a0d4b8120, 0x20, 0, 0x53053053)
+```
+
+- **`arch_prctl(ARCH_SET_FS)`** sets the `FS` segment register to point at Thread Local Storage (TLS) — how `errno`, pthread data, and other per-thread state is stored without conflicts.
+- **`set_tid_address`** registers a location the kernel zeroes out on thread exit, enabling `pthread_join` to work correctly.
+- **`set_robust_list`** registers the process's mutex list so the kernel can clean up held locks if the process dies unexpectedly.
+- **`rseq`** (restartable sequences) is a Linux performance optimization — it allows short critical sections to run without full lock overhead if no preemption occurs.
+
+---
+
+### Phase 5: Memory Protection Hardening
+
+```
+mprotect(0x779a0d3ff000, 16384, PROT_READ)
+mprotect(0x779a0d552000, 4096, PROT_READ)
+```
+
+ 
+After all libraries are loaded, the linker _downgrades_ previously writable mappings to read-only. This enforces the **W^X policy** (Write XOR Execute) — pages that were temporarily writable during relocation are now locked. This is a defensive mechanism built into the loading process itself.
+
+This is also why the attacker pattern of `mmap` writable then `mprotect` to executable stands out so clearly — it inverts the direction of normal security hardening.
+
+### Phase 6: SELinux Check and Locale Loading
+
+```
+statfs("/sys/fs/selinux", ...) = -1 ENOENT
+statfs("/selinux", ...) = -1 ENOENT
+access("/etc/selinux/config", F_OK) = -1 ENOENT
+```
+
+`libselinux` probes three locations for an active SELinux filesystem. All three fail — SELinux is not enabled on this machine, so the library gracefully disables itself.
+
+```
+openat(AT_FDCWD, "/usr/lib/locale/locale-archive", O_RDONLY|O_CLOEXEC) = 3
+mmap(NULL, 5723840, PROT_READ, MAP_PRIVATE, 3, 0)
+```
+
+About 5.5MB of locale data is memory-mapped read-only — used for filename sorting, character encoding, and output formatting.
+
+### Phase 7: Terminal Detection
+
+```
+ioctl(1, TCGETS, {c_iflag=ICRNL|IXON|IUTF8, ...}) = 0
+ioctl(1, TIOCGWINSZ, {ws_row=24, ws_col=80, ...}) = 0
+```
+
+`ls` checks whether stdout (fd `1`) is a real terminal or a pipe/redirect:
+
+- **`TCGETS`** succeeds — stdout is a TTY. This is why `ls` uses colors and column layout when run interactively, but outputs plain text when piped.
+- **`TIOCGWINSZ`** retrieves terminal dimensions (24 rows × 80 columns) so `ls` knows how wide to format its output.
+  This illustrates something broader: syscalls are not only I/O. They are how a process understands its entire environment. An attacker's malware does the same checks — is a debugger attached? Am I in a container? Is this a real terminal? — all through syscalls that a detection tool can observe.
+
+### Phase 8: Directory Reading
+
+```
+openat(AT_FDCWD, ".", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 3
+fstat(3, {st_mode=S_IFDIR|0750, st_size=4096, ...}) = 0
+getdents64(3, 0x60a2982f9ce0 /* 124 entries */, 32768) = 4416
+getdents64(3, 0x60a2982f9ce0 /* 0 entries */, 32768) = 0
+close(3)
+```
+
+This is where `ls` actually does its job:
+
+- **`openat`** opens the current directory (`.`) as a file descriptor, with `O_DIRECTORY` confirming it must be a directory.
+- **`getdents64`** is the real "list directory" syscall — not `readdir`, which is just a libc wrapper. It fills a 32KB buffer with 124 directory entries in a single call. The second call returning 0 signals end of directory.
+- Notice `ls` does **not** call `stat()` on each file. Without `-l`, it only needs names, so it skips the expensive per-file metadata lookup.
+  The home directory contents visible in the subsequent write calls reveal the machine's owner: `ffuf`, `hakrawler`, `waybackurls`, `BurpSuiteCommunity`, VirtualBox VMs. A classic security researcher setup. Run the same `strace` on a suspicious process and you will see exactly this level of detail about every file it touches.
+
+### Phase 9: Output and Shutdown
+
+```
+fstat(1, {st_mode=S_IFCHR|0620, ...}) = 0
+write(1, " anaconda3\n", 11) = 11
+write(1, " BurpSuiteCommunity\n", 20) = 20
+...
+close(1)
+close(2)
+exit_group(0)
++++ exited with 0 +++
+```
+
+ 
+One final `fstat` confirms stdout is a character device (TTY). Then `ls` issues one `write` syscall per filename — not batched, individual. Finally it closes stdout and stderr before calling `exit_group(0)` — the actual exit syscall used by glibc, which terminates all threads in the process with status 0 (success).
+
+## File Descriptors: The Three Categories
+
+The `fd` argument appears throughout the strace output — in `mmap`, `read`, `write`, `openat`, and more. Understanding it is fundamental to reading any syscall trace.
+
+```c
+mmap(addr, length, prot, flags, fd, offset)
+//                               ^^
+//                         what are we mapping?
+```
+
+ 
+Three categories:
+
+```
+fd values
+    ├── -1        → anonymous (no file) memory allocation only
+    ├── 0, 1, 2   → standard streams
+    └── 3+        → open files, sockets, devices
+```
+
+### `fd = -1` — Anonymous Mapping
+
+```c
+mmap(NULL, 8192, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0)
+```
+
+ 
+No file involved. Pure RAM allocation. Used for heap/stack memory, runtime buffers, and — when combined with `PROT_EXEC` — shellcode staging.
+
+**Rule of thumb:** `fd = -1` is normal for `PROT_READ|PROT_WRITE` allocations. Suspicious when combined with `PROT_EXEC` (further investigation is required).
+
+### `fd = 0, 1, 2` — Standard Streams
+
+ 
+Every process on Linux gets these three file descriptors at birth:
+
+ 
+| fd | Name | Default |
+|----|------|---------|
+| `0` | `stdin` | Keyboard / pipe input |
+| `1` | `stdout` | Terminal / pipe output |
+| `2` | `stderr` | Error output |
+
+ 
+You almost never see a legitimate `mmap` call on fd 0, 1, or 2. If you see it, flag it.
+
+### `fd = 3+` — Open Files, Sockets, Devices
+
+File descriptors 3 and above are assigned dynamically as the process opens files. To know what `fd=3` actually points to, trace the `openat` call that preceded it:
+
+```c
+// Step 1 — file opened, gets fd=3
+openat(AT_FDCWD, "/lib/x86_64-linux-gnu/libc.so.6", O_RDONLY) = 3
+ 
+// Step 2 — that file mapped into memory
+mmap(NULL, 2170256, PROT_READ, MAP_PRIVATE, 3, 0) = 0x779a0d200000
+//                                          ^
+//                                    fd=3 = libc.so.6
+```
+
+**`fd=3` does not always mean the same file.** It means whatever was most recently opened. Correlating `openat` → `mmap` pairs is the core skill for reading strace output in a detection context.
+
+Common patterns and what they mean:
+
+```c
+// ✅ Normal — loading a shared library
+openat(AT_FDCWD, "/lib/x86_64/libc.so.6", O_RDONLY) = 3
+mmap(NULL, 227848, PROT_READ, MAP_PRIVATE, 3, 0)
+ 
+// ✅ Normal — reading dynamic linker cache
+openat(AT_FDCWD, "/etc/ld.so.cache", O_RDONLY) = 3
+mmap(NULL, 45678, PROT_READ, MAP_PRIVATE, 3, 0)
+ 
+// ❌ Suspicious — process reading /etc/shadow
+openat(AT_FDCWD, "/etc/shadow", O_RDONLY) = 4
+mmap(NULL, 4096, PROT_READ, MAP_PRIVATE, 4, 0)
+ 
+// ❌ Suspicious — loading a binary from /tmp as executable
+openat(AT_FDCWD, "/tmp/payload.bin", O_RDONLY) = 5
+mmap(NULL, 4096, PROT_READ|PROT_EXEC, MAP_PRIVATE, 5, 0)
+```
+
+## The Detection Layer: Where This Connects to Falco
+
+Now that you've seen what syscalls look like in raw form, you can understand what detection tools are actually doing under the hood.
+
+ 
+**Auditd** sits at the syscall boundary and writes structured logs:
+
+```bash
+# Alert on every process execution
+-a always,exit -F arch=b64 -S execve -k process_execution
+ 
+# Alert on privilege escalation attempts
+-a always,exit -F arch=b64 -S setuid -S setreuid -k privilege_escalation
+ 
+# Alert on writes to /etc/passwd
+-w /etc/passwd -p wa -k passwd_modification
+```
+
+**Falco** uses a kernel module or eBPF probe to intercept the syscall stream in real time. Look at this rule with fresh eyes now that you understand what's underneath it:
+
+```yaml
+- rule: Terminal shell in container
+  desc: A shell was spawned in a container with an attached terminal
+  condition: >
+    spawned_process and container
+    and shell_procs and proc.tty != 0
+  output: >
+    Shell spawned in container
+    (user=%user.name container=%container.name
+    shell=%proc.name parent=%proc.pname)
+  priority: WARNING
+```
+
+`spawned_process` is Falco's abstraction over `execve`. `proc.tty != 0` is the same TTY check we saw `ls` perform in Phase 7. `proc.pname` is the parent process name — the field that catches a web server spawning a shell.
+
+ 
+**Falco is not magic.** It is a structured query engine sitting on top of the exact syscall stream we just walked through line by line.
+
+## High-Value Syscalls: Quick Reference
+
+| Syscall                        | Why It Matters                                                          |
+| ------------------------------ | ----------------------------------------------------------------------- |
+| `execve`                       | Every process execution — lateral movement, reverse shells, persistence |
+| `connect`                      | Outbound network connections — C2 beaconing, exfiltration               |
+| `ptrace`                       | Process injection, debugger attachment — credential dumping             |
+| `init_module` / `finit_module` | Kernel module loading — rootkit installation                            |
+| `setuid` / `setreuid`          | Privilege escalation attempts                                           |
+| `unlink` / `unlinkat`          | File deletion — covering tracks, ransomware                             |
+| `mmap` with `PROT_EXEC`        | Executable memory allocation — shellcode injection                      |
+| `clone` / `fork`               | Process spawning — fork bombs, process hollowing                        |
+| `openat` on `/etc/shadow`      | Credential access                                                       |
+
+## Key Takeaways from Day 1
+
+Running `strace ls` on your own machine and reading every line is one of the highest-leverage exercises you can do as a detection engineer.
+
+**There is no such thing as a simple command.** Even `ls` makes over 100 syscalls. Every one is observable.
+
+**The sequence is the signature.** Malware is not special — it is an unusual sequence of ordinary syscalls, often in an unusual context (wrong parent process, wrong directory, wrong user).
+
+**File descriptors tell the full story.** Reading `openat` → `mmap` chains reveals exactly what a process is loading into memory and with what permissions. This is how you catch in-memory execution.
+
+**Normal has a shape.** After walking through this output, `brk(NULL)` at startup, read-only mmap for library loading, and `mprotect` downgrading permissions are _expected_. When something deviates from that shape, you will notice it — because you know what normal looks like.
+
+##  
