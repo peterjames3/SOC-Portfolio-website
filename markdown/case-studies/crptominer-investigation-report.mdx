@@ -1,0 +1,453 @@
+---
+title: "Investigating a Spike in Discovery Commands on Linux"
+category: "THREAT HUNTING"
+description: "Analyzing a SIEM alert triggered by discovery activity after 
+the itsupport user executed the hostname command, tracing the sequence of 
+events to uncover what occurred."
+thumbnail: "/discovery_alert.svg"
+date: "May 2026"
+classification: "Incident Investigation Report"
+challenge: "SOC Investigation"
+analyst: "Kamau James Kimani"
+tags:
+  [
+    "Linux",
+    "SIEM",
+    "Threat Hunting",
+    "Discovery Commands",
+    "SOC",
+    "Incident Response",
+    "Blue Team",
+  ]
+status: "Completed"
+---
+
+## Executive Summary
+
+A security monitoring alert flagged unusual activity on a Linux server — 
+specifically a spike in system discovery commands run by a user account 
+called `itsupport`. What began as a single alert unravelled into a 
+full-scale intrusion that had been underway for nearly three hours before 
+detection. The attacker gained access through a compromised password, 
+quietly mapped the system, downloaded malicious tools, planted a backdoor, 
+attempted to spread across the internal network, and deployed a 
+cryptocurrency miner — all without triggering a single additional alert.
+
+This report documents how that intrusion was uncovered, step by step, 
+using Linux audit logs as the primary source of evidence.
+
+<Callout type="key">
+  **KEY INSIGHT:** Linux audit logs capture every program execution at 
+  the kernel level. Unlike shell history — which any attacker can delete 
+  — audit logs cannot be modified from userspace. That asymmetry is what 
+  makes them the ground truth of what actually ran on a system.
+</Callout>
+
+---
+
+## Stats at a Glance
+
+| Metric | Value |
+|---|---|
+| Duration of undetected activity | ~3 hours |
+| User accounts compromised | 3 (`itsupport`, `ubuntu`, `root`) |
+| Attacker IPs identified | 4 |
+| Malicious scripts found | 2 (`debug.sh`, `helper.sh`) |
+| Tools downloaded | 2 (Elastic Agent, `dota3.tar.gz`) |
+| Primary investigation tool | `ausearch` / `aureport` |
+| Named threat campaign | Dota3 |
+
+---
+
+## What Happened — The Plain Language Version
+
+An attacker broke into the server by guessing the password of a user 
+account called `itsupport`. Once inside, they ran a script that looked 
+like a routine IT tool but was actually collecting detailed information 
+about the system — its hardware, running processes, and disk layout. 
+They then downloaded additional tools, including a malware package 
+disguised as a gaming file.
+
+A second attacker — or the same attacker using different infrastructure 
+— then broke in as the most powerful user on the system (`root`) after 
+a coordinated password-guessing campaign involving multiple locations 
+simultaneously. With root access, they transferred files, planted a 
+scheduled task to maintain access, replaced the legitimate user's SSH 
+key with their own, changed account passwords, and launched a 
+cryptocurrency miner that would run silently in the background 
+consuming the server's computing resources.
+
+The server was then used as a springboard to attack other machines on 
+the same internal network using the stolen credentials.
+
+---
+
+## Section 1 — How the Investigation Unfolded
+
+### The Starting Point — A Single Alert
+
+The investigation began with one alert from the security monitoring 
+system flagging a spike in system discovery commands run by the 
+`itsupport` account. Discovery commands are programs that collect 
+information about a system — things like checking what operating system 
+is running, how much memory is available, or what processes are active.
+
+On their own, these commands are not dangerous. System administrators 
+run them routinely. But the volume, the timing, and the account running 
+them were unusual enough to warrant investigation.
+
+Rather than jumping to conclusions, the investigation started from what 
+was known and worked outward — a principle that proved essential as the 
+scope of the intrusion became clear.
+
+---
+
+### Phase 1 — Finding the Script
+
+The first task was to identify exactly what had been executed. Linux 
+audit logs record every program that runs on the system, including the 
+full command used to launch it. Searching those records for script files 
+with common extensions revealed a script called `debug.sh` being run 
+from the `itsupport` user's home folder.
+
+Reading the script's contents, it appeared at first glance to be a 
+legitimate IT diagnostic tool — something a support technician might 
+run to check system health. It gathered operating system information, 
+CPU and memory details, disk usage, and a list of running processes.
+
+One rule of thumb in threat hunting is to verify everything. The 
+friendly comments and routine-looking commands turned out to be cover 
+for what the script was actually being used for — building a detailed 
+profile of the system for an attacker.
+
+The script had been run automatically, just eleven seconds after a 
+bash shell was opened. That speed ruled out a human typing commands 
+manually. This was scripted, deliberate automation.
+
+---
+
+### Phase 2 — Tracing Who Opened That Shell
+
+Every process on Linux has a parent — something that launched it. 
+Tracing the shell that ran `debug.sh` led to a parent process with 
+no audit record of its own. It existed in the logs only as a reference 
+number — a ghost process that spawned the attacker's shell without 
+leaving a trace of how it got there.
+
+That gap pointed toward one likely explanation: the ghost process was 
+the SSH service that handled an incoming remote connection. The attacker 
+had logged in remotely, and the audit system had not captured that 
+login event directly.
+
+This redirected the investigation toward the SSH logs.
+
+---
+
+### Phase 3 — The SSH Evidence
+
+Filtering the audit logs for SSH-related activity revealed two distinct 
+sessions from the same external IP address.
+
+The first session, at 6:29 PM, successfully logged in as `itsupport`. 
+This was the confirmed attacker session — the one that ran `debug.sh` 
+and downloaded additional tools minutes later.
+
+The second session, at 6:43 PM, attempted to log in as the `ubuntu` 
+account from the same IP address and failed repeatedly — eight attempts 
+in under two minutes. The speed of those attempts confirmed automated 
+tooling, not a person typing passwords.
+
+The same IP that broke in as `itsupport` was already trying to move 
+to a second account less than fifteen minutes later.
+
+---
+
+### Phase 4 — A Coordinated External Attack
+
+Searching the logs more broadly for all SSH activity revealed something 
+larger happening in parallel. Between 9:13 PM and 9:16 PM, four 
+different IP addresses were attacking the server simultaneously.
+
+Three of them — from Cameroon, China, and the United States — were 
+hammering the server with failed login attempts, targeting the most 
+powerful account on the system. All three started within seconds of 
+each other. None of them succeeded.
+
+The fourth IP address, however, succeeded on the first try.
+
+Checking those IP addresses against public threat intelligence databases 
+confirmed that all three failing IPs had been previously flagged by 
+security vendors for scanning and malicious activity. The successful IP 
+had not been flagged — suggesting it was either a new or private 
+piece of infrastructure used specifically for the post-compromise stage.
+
+#### The Timeline That Made Everything Clear
+
+| Time | IP Address | What Happened |
+|---|---|---|
+| 21:13:17 | 195.24.207.223 | Failed login attempts begin |
+| 21:13:25 | 155.94.170.106 | Failed login attempts begin |
+| 21:13:33 | 45.9.148.125 | **Root login succeeds** |
+| 21:13:36 | 101.126.145.188 | Failed login attempts begin |
+| 21:14:29 | 45.9.148.125 | Full interactive session established |
+| 21:15:08 | 101.126.145.188 | Failed attempts stop |
+| 21:15:22 | 155.94.170.106 | Failed attempts stop |
+| 21:16:07 | 195.24.207.223 | Failed attempts stop |
+
+The successful login occurred in the middle of the attack window — not 
+before it, not after it. The three failing IPs continued attacking even 
+after access had been obtained. This pattern is consistent with a 
+botnet — automated systems guessing passwords and reporting back when 
+one works, while the human operator logs in separately using the 
+discovered credentials.
+
+---
+
+### Phase 5 — What the Attacker Did With Root Access
+
+The session established by the successful root login was examined in 
+full. Every command that ran during that session was extracted from 
+the audit logs and placed in order.
+
+The first group of commands — shell scripts running automatically after 
+login to display a welcome message — were entirely normal Ubuntu 
+behavior. Recognising the normal made what came next impossible to miss.
+
+After the welcome scripts completed, the attacker ran a sequence of 
+information-gathering commands: checking the operating system version, 
+searching the filesystem, reading files, examining process lists, and 
+confirming their own privilege level. This mirrors exactly what 
+`debug.sh` had done earlier — the same reconnaissance playbook, now 
+running as the most powerful user on the system.
+
+Near the end of that session, two critical events appeared.
+
+First, a new bash shell was spawned within the session — indicating 
+a script had taken over. Second, the SSH file transfer service was 
+launched manually, not through normal channels. This is the equivalent 
+of a visitor walking past the reception desk and going directly to the 
+filing cabinet themselves — bypassing normal procedure entirely.
+
+The file transfer service being invoked manually, under root, pointed 
+strongly to files being moved in or out of the system during that window.
+
+---
+
+### Phase 6 — Stepping Back to See the Full Picture
+
+At this point individual filters were returning limited results. 
+Rather than continuing to search narrowly, the investigation pulled 
+back and requested a summary of every command that had run across 
+the entire audit log — sorted by how many times each one appeared.
+
+The results were revealing. The most frequently executed commands 
+were all reconnaissance tools. More importantly, several commands 
+appeared that had not been visible in the session-level analysis:
+
+- `tar` appeared six times — a tool for packaging files into archives
+- `gzip` appeared once — a compression tool
+- `wget` appeared twice — a tool for downloading files from the internet
+- `curl` appeared once — another download tool
+- `rm` appeared once — a file deletion command
+
+That combination — download, archive, compress, delete — is a 
+recognisable pattern. It describes a workflow of collecting data, 
+packaging it for transfer, sending it out, and removing the evidence.
+
+---
+
+### Phase 7 — The Downloads Exposed
+
+Filtering the logs for `curl` and `wget` activity identified three 
+download events.
+
+One was entirely legitimate — an automated Ubuntu system process 
+fetching a message-of-the-day update in the background. Its 
+characteristics made it easy to distinguish: no user session, no 
+terminal, no audit identity. A background daemon doing its job.
+
+The other two were not legitimate.
+
+The first was a download of the Elastic Agent software package — 
+a security monitoring tool — by the `itsupport` account, one minute 
+after the initial shell was opened. This resolved an earlier question 
+about why that software package was present in the `itsupport` home 
+folder. It had been placed there deliberately, downloaded as part of 
+the initial intrusion.
+
+The second was far more alarming. The `ubuntu` account — on a 
+completely separate terminal session — had used `curl` to download 
+a file called `helper.sh` from a domain called `drobbox-online.thm`. 
+The file was saved to a location on disk that survives system restarts.
+
+The domain name is a deliberate impersonation of Dropbox — close 
+enough to pass a quick glance, but entirely attacker-controlled. 
+The filename `helper.sh` was chosen to look routine. The save 
+location was chosen for persistence.
+
+This download happened at 6:49 PM — nearly three hours before the 
+root compromise. The `ubuntu` account had already been reached before 
+the larger attack wave began.
+
+---
+
+### Phase 8 — The Script That Revealed Everything
+
+Reading the contents of `helper.sh` completed the picture. It was 
+not a simple backdoor. It was a structured, multi-stage attack tool 
+that executed an entire intrusion sequence automatically.
+
+**What it did, in plain language:**
+
+**Step 1 — System Profiling.** The script began by collecting 
+hardware and system information — processor details, memory, 
+operating system version. The same reconnaissance seen throughout 
+the investigation, now automated and running under the `ubuntu` account.
+
+**Step 2 — Password Change.** The script attempted to change the 
+current user's password to one controlled by the attacker. The 
+new password was also saved to a file called `up.txt` — a 
+credential list that would be used in a later stage.
+
+**Step 3 — SSH Backdoor.** The script deleted the legitimate user's 
+SSH access keys and replaced them with the attacker's own key. 
+This created a persistent, password-independent back door into 
+the account. Even if the password were later changed, the attacker 
+could still log back in using their key.
+
+A unique string — `mdrfckr` — was embedded in the key as a comment. 
+This is a known signature of the Dota3 attack campaign, identifiable 
+through threat intelligence databases.
+
+**Step 4 — Malware Unpacking.** The script created a hidden folder 
+in the system's temporary directory — hidden because its name begins 
+with a dot, making it invisible to standard file listing commands. 
+Inside that folder, it unpacked an archive called `dota3.tar.gz`, 
+which contained the malware tools. The folder was disguised with 
+the name `.rsync` — mimicking a legitimate system synchronisation tool.
+
+**Step 5 — Network Scanning.** Using the credential list built in 
+Step 2, the script launched a tool called `tsm` — an SSH password 
+scanner — and pointed it at two standard private network address 
+ranges. The goal was to find other machines on the same network 
+that used the same or similar passwords, and break into them as well. 
+The scans were staggered with delays to avoid triggering rate-based 
+detection systems.
+
+**Step 6 — Cryptominer Deployed.** Finally, the script launched a 
+program called `initall` — named to resemble a legitimate system 
+initialisation process. This was a cryptocurrency miner. It ran 
+silently in the background, consuming the server's computing 
+resources to generate cryptocurrency for the attacker, with all 
+output suppressed so nothing would appear in system logs.
+
+---
+
+## Section 2 — The Complete Attack Timeline
+
+```
+18:29:33  Attacker logs in as itsupport via SSH (10.14.105.255)
+18:29:48  debug.sh executed — system reconnaissance
+18:30:48  Elastic Agent downloaded to /home/itsupport
+18:43:50  Same IP attempts ubuntu account — fails repeatedly
+18:49:39  helper.sh downloaded from drobbox-online.thm (ubuntu account)
+          → password changed
+          → SSH backdoor planted
+          → dota3.tar.gz unpacked to hidden /tmp/.X26-unix folder
+          → tsm scanner launched against internal network
+          → initall cryptominer deployed
+21:13:33  Root login succeeds (45.9.148.125) amid coordinated brute force
+21:14:28  Root session active — recon, file transfer via SFTP
+21:15:01  Cron job triggered — automated persistence confirmed
+21:16:07  Brute force traffic from other IPs stops
+```
+
+---
+
+## Section 3 — What the SIEM Missed
+
+The security monitoring system detected the attack at the discovery 
+phase — the point where information-gathering commands were being run. 
+By that time, the attacker had already been on the system for over 
+twenty minutes and had downloaded tools.
+
+| What Was Missed | Why It Matters |
+|---|---|
+| Initial SSH login from a new external IP | This was the first moment of compromise |
+| Eight rapid failed login attempts from the same IP | A clear sign of automated credential stuffing |
+| A file download from a typosquatted domain | The malware delivery event |
+| Direct root login via SSH | Root should never log in directly via SSH |
+| Cron job creation within minutes of root access | A textbook persistence technique |
+| Scripts executed from user home directories | Unusual and worth alerting on |
+
+The SIEM was configured to detect what the attack looked like at 
+its most visible — the reconnaissance phase — but had no rules 
+covering the quieter, earlier stages where the real damage was done.
+
+---
+
+## Section 4 — Attack Mapping
+
+Every stage of this attack maps to a recognised technique in the 
+MITRE ATT&CK framework — the industry-standard catalogue of 
+adversary behaviours.
+
+| What the Attacker Did | Technique |
+|---|---|
+| Guessed SSH password to gain entry | Brute Force (T1110) |
+| Ran shell scripts to execute commands | Unix Shell (T1059.004) |
+| Collected system and hardware information | System Information Discovery (T1082) |
+| Listed running processes | Process Discovery (T1057) |
+| Searched the filesystem | File and Directory Discovery (T1083) |
+| Changed account password | Account Manipulation (T1098) |
+| Planted SSH key for persistent access | SSH Authorized Keys (T1098.004) |
+| Created a scheduled task for persistence | Cron (T1053.003) |
+| Used hidden directories for malware | Hidden Files and Directories (T1564.001) |
+| Suppressed command output | Impair Defenses (T1562) |
+| Named malware to look like system files | Masquerading (T1036) |
+| Scanned internal network with stolen credentials | SSH Lateral Movement (T1021.004) |
+| Packaged files for transfer | Archive Collected Data (T1560) |
+| Transferred files via SSH subsystem | Exfiltration Over Alternative Protocol (T1048) |
+| Ran cryptocurrency miner | Resource Hijacking (T1496) |
+
+---
+
+## Section 5 — Named Threat: The Dota3 Campaign
+
+The combination of indicators found across this investigation is 
+not random. They match a documented attack campaign known as Dota3 — 
+named after the malware archive at its core.
+
+| Indicator | Significance |
+|---|---|
+| `dota3.tar.gz` | Campaign-named malware archive |
+| `mdrfckr` SSH key comment | Unique attacker signature |
+| `tsm` binary | Known SSH credential scanner used by this campaign |
+| `initall` binary | Cryptominer associated with this campaign |
+| `/tmp/.X26-unix` | Known staging directory pattern |
+| `drobbox-online.thm` | Typosquatted delivery domain |
+
+---
+
+## Conclusion
+
+<Callout type="key">
+  **FINAL CONCLUSION:** What the SIEM flagged as a discovery alert was 
+  the visible tip of a fully executed intrusion. The attacker gained 
+  initial access through a compromised password, staged tools quietly, 
+  manipulated credentials, implanted an SSH backdoor, scanned the 
+  internal network for further targets, and deployed a cryptominer — 
+  all within a single audit log window. The security monitoring system 
+  missed the first three hours of activity entirely and only triggered 
+  at the reconnaissance phase. The complete picture only became visible 
+  through systematic manual analysis of the Linux audit logs — 
+  records that, unlike shell history, the attacker could not delete.
+</Callout>
+
+The most important lesson from this investigation is not about 
+any single technique or tool. It is about the gap between what 
+a security system is configured to detect and what an attacker 
+actually does. Closing that gap requires not just better rules, 
+but the willingness to follow evidence wherever it leads — even 
+when it means going back to the beginning and questioning 
+assumptions made three hours earlier.

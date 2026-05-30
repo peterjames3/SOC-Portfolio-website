@@ -69,10 +69,10 @@ export function HeroSection() {
           }`}
         >
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-8">
-            <StatCounter end={50} suffix="+" label="Incidents Handled" />
-            <StatCounter end={12} suffix="+" label="Threat Campaigns" />
-            <StatCounter end={7} suffix="" label="Certifications" />
-            <StatCounter end={3} suffix="+" label="Years Experience" />
+            <StatCounter end={10} suffix="+" label="Incidents Handled" />
+            <StatCounter end={4} suffix="+" label="Threat Campaigns" />
+            <StatCounter end={4} suffix="" label="Certifications" />
+            <StatCounter end={2} suffix="+" label="Years Experience" />
           </div>
         </div>
       </div>
