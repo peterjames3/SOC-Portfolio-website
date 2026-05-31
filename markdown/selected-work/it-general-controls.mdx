@@ -1,0 +1,100 @@
+---
+title: "IT General Controls & Application Audit"
+category: "IT AUDIT"
+description: "Six regulatory-grade ICT audit engagements across CBK-supervised financial services entities in Kenya, covering 14 audit domains from governance and access controls through to vendor management and operational procedures."
+thumbnail: "/audit methodlogy.webp"
+date: "2025"
+classification: "Client Engagements"
+sector: "Regulated Financial Services"
+analyst: "Kamau James Kimani"
+tags:
+  [
+    "Access Controls",
+    "Endpoint Security",
+    "Compliance",
+    "Application Controls",
+    
+  ]
+status: "Completed"
+engagements: 6
+total_findings: 49
+high_critical: 21
+domains_covered: 14
+---
+
+# IT General Controls & Application Audit
+
+> **Sector:** Regulated Financial Services · Kenya
+> **Scope:** Access controls · Endpoint security · Compliance · Application controls
+> **Analyst:** Kamau James Kimani | **Engagements:** 3 | **Regulatory Framework:** CBK-supervised
+
+---
+
+## Overview
+
+| Metric | Value |
+| --- | --- |
+| Engagements | 6 |
+| Total findings | 49 |
+| High / critical | 21 |
+| Domains covered | 14 |
+
+Three ICT audit engagements conducted across CBK-supervised digital credit providers in Kenya. Each engagement covered the full stack of IT general controls — from governance and access management through to application-layer controls, vendor oversight, and operational documentation. All findings were reported against CBK ICT guidelines and mapped to ISO 27001:2022, NIST SP 800-53, and COBIT 2019.
+
+---
+
+## Audit Domains Covered
+
+| Domain | Areas Tested |
+| --- | --- |
+| Governance & ownership | Application ownership, risk assessment, policy alignment |
+| Access & authentication | Password controls, MFA, session management |
+| Authorisation & roles | RBAC, provisioning, periodic access review |
+| Configuration & change control | Change management, SoD, hardening |
+| Input controls | Data validation, batch controls, authorisation |
+| Processing controls | Run-to-run totals, error handling, master file |
+| Output controls | Reconciliation, distribution, retention |
+| Data integrity & quality | Referential integrity, cleansing, CDEs |
+| Logging & monitoring | Audit trail, log review, log protection |
+| Backup & recovery | Scope, restoration testing, off-site storage |
+| Interface & integration | Mapping, transmission integrity, error handling |
+| System security settings | Vulnerability management, network segmentation, secure coding |
+| Vendor management | Due diligence, SOC reports, vendor access |
+| Documentation & operations | System docs, runbooks, user training |
+
+---
+
+## Most Common Findings
+
+### High severity
+
+- Privileged credentials stored in plaintext — found across all three engagements
+- MFA absent or not enforced for privileged and external access
+- Dormant user accounts not deprovisioned — active credentials with no assigned owners
+- No role-based access control — flat permissions with no least-privilege enforcement
+- Sensitive data accessible without audit trail or access logging
+
+### Medium severity
+
+- Segregation of duties gaps — same role authorising and approving transactions
+- Unpatched internet-facing endpoints with known CVEs
+- File upload functionality unrestricted — no file type or size validation
+- No formal change management process for production systems
+- Password policy not enforced at system level — complexity rules advisory only
+
+### Low severity
+
+- ICT policy documentation incomplete — key procedures exist on paper but not enforced technically
+- Business continuity plan present but not reviewed, tested, or approved by management
+
+---
+
+## Recurring Theme
+
+> A consistent gap between documented ICT policy and actual system configuration was observed across all three engagements. Controls were written into policy but were not enforced at the technical layer.
+
+---
+
+## Tags
+
+`Access controls` `Endpoint security` `Credential management` `Change management` `Data governance` `Application controls` `Logging & monitoring` `Vendor management` `CBK compliance` `ISO 27001` `NIST SP 800-53` `COBIT 2019`

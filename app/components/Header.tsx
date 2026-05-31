@@ -95,7 +95,7 @@ export function Header() {
           </a>
 
           {/* Desktop Nav */}
-          <nav className="hidden sm:flex items-center gap-8">
+          <nav className="hidden md:flex items-center gap-8">
             {navLinks.map((link) => (
               <a
                 key={link.href}
@@ -125,7 +125,7 @@ export function Header() {
             </a>
             <button
               onClick={() => setMenuOpen(true)}
-              className="md:hidden text-text-primary p-2"
+              className="flex md:hidden text-text-primary p-2"
               aria-label="Open menu"
             >
               <Menu size={24} />
