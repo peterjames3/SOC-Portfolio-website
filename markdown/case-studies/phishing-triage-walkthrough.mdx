@@ -1,0 +1,149 @@
+---
+title: "Alert Investigation Walkthrough — ID 1000"
+category: "SOC INVESTIGATION"
+description: "Investigating a SIEM alert triggered by an inbound email
+from an external sender with an unusual top-level domain. Tracing the
+sequence of events through WHOIS analysis, DNS resolution, email
+authentication checks, VirusTotal, and SIEM pivoting to determine
+whether the activity represents a genuine threat or a false positive."
+thumbnail: "/dashboard-starting-point.png"
+date: "June 2026"
+classification: "Technical / Incident Investigation"
+challenge: "SOC Investigation"
+analyst: "Kamau James Kimani"
+tags:
+  [
+    "Email Security",
+    "Phishing",
+    "SIEM",
+    "SOC",
+    "False Positive",
+    "WHOIS",
+    "VirusTotal",
+    "DNS Analysis",
+    "SPF",
+    "DMARC",
+    "DKIM",
+    "Incident Response",
+    "Blue Team",
+    "TLD Analysis",
+  ]
+status: "Completed"
+---
+
+## Executive Summary
+
+Investigated a SIEM alert triggered by an inbound email from an
+external sender using an unusual top-level domain (`.me`). The goal
+was to determine whether the activity represented a genuine threat or
+a false positive by analysing the sender domain, email authentication
+records, and outbound communication history.
+
+<Callout type="key">
+  **KEY INSIGHT:** A suspicious TLD alone is not sufficient evidence
+  of malicious intent. Without corroborating indicators — failed
+  authentication (SPF, DMARC, DKIM), a payload, or a malicious link —
+  an alert fired on TLD alone will generate significant noise. Context
+  is what separates a true positive from a false positive.
+</Callout>
+
+---
+
+## Investigation Approach
+
+I assigned myself the  alert with ID 1000, which marked the start of my investigation. To ream more about the alert, I clicked the dropdown icon.
+
+From the dropdown, what caught my attention was:
+
+| Field | Value |
+|---|---|
+| **Sender** | `eileen@trendymillineryco.me` |
+| **Recipient** | `support@tryhatme.com` |
+| **Timestamp** | `06/16/2026 09:01:43.225` |
+| **Description** | A suspicious email was received from an external sender with an unusual top-level domain. |
+| **Note** | This detection rule still needs fine-tuning — SOC Lead |
+
+![alert decription](/alert_description.png)
+
+## Email header analysis
+
+From here i proceeded with email header analysis using public sources. To start my analysis, I separated the sender  email into two parts; the user and  domain - divided by the `@` symbols, resulting  in `eileen` and 
+'trendymillineryco.me. Domail analysis followed to understand the IP address and the user or organization behind this domain.
+
+---
+
+## Domain Investigation
+
+**WHOIS - DomainTools**
+
+WHOIS  via DomainTools showed that the domain was only available for sale, with no user or organization listed a the  registrant and no WHOIS record associated with it.
+
+![domain tools result](/whois-record.png)
+
+**DNS Resolution - URLScan.io, nslookup, ping**
+
+Tools and commands including URLScan.io, nslookup and ping returned no results, meaning I could not resolve an IP addree behind the Domain
+
+![urlscan results](/urlscan.png)
+
+**Email authentication - SPF, DMARC, DKIM**
+
+I inspected for SPF, DMARC, and DKIM records, returning no results. No email authentication configuration existed for this domain.
+
+![spf, dmarc, dkim results](/spf_dmarc_dkim-results.png)
+
+**VirusTotal**
+After some back and forth with various tools, I decided to check the domain on VirusTotal, which returned no malicious indicators. No vendors had flagged the domain as malicious.
+Notably, the domain had  been submitted to virustotal 3 days prior to my investigation, and the somments on the details tab all pointed to one thing:
+
+> *"Is trendymillineryco.me a known  business partner? No. it looks
+> like a random, cheap domain often used by attackers."*
+
+![virustotal result](/virus-total_results.png)
+---
+
+## Email Body analysis and indicators
+
+The body of the email contained some of indicators of phishing:
+
+#### Solicitation of Sensitive Data
+
+For instance, the email requested: "To claim your inheritance send us your banking details immediately". Legitimate business inquiries, especially to a general **support@** Address
+never request banking  credentials in the first correspondence. this is a clear social engineering tactic.
+
+#### Pyschological Triggere (Urgency)
+
+The attacker used the word **"immediately"** to create a sense of urgency. this attempts to bypass the victim's critical thinking, forcing them to act fast without verifying the source. 
+
+## SIEM Pivot- Outbound Communication Check
+
+I returned to the SIEM to check whether the support email had sent anything to the sender, sung the filter below:
+
+```python
+sender="support@tryhatme.com" AND recipient="eileen@trendymillineryco.me"
+```
+There were no results. I ran additional filters targeting any outbound
+traffic from the support email, which confirmed that no payment
+information was sent to the domain under investigation.
+
+![splunk filters](/splunk-1.png)
+
+---
+### Classification & Recommendation
+
+Given that there were no attachments, links, or access to the email
+to check the return path or test for spoofing, I decided to classify
+this alert as a **False Positive**.
+
+**Rule Tuning Recommendation:**
+
+The current detection rule relies solely on TLD, which generates
+significant noise without additional corroborating context. The rule
+should also check for failed authentication — specifically SPF, DMARC,
+DKIM, or S/MIME — as relying solely on TLD without additional
+authentication context will generate significant noise. Suggested
+conditions before firing:
+
+- `AND` (SPF fail `OR` DKIM fail `OR` DMARC fail)
+- `AND` (email contains attachment `OR` email contains URL)
+- `AND` sender domain age < 30 days
