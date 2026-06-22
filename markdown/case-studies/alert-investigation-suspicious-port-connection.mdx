@@ -44,8 +44,8 @@ ancestry in Splunk.
   no process context attached. Field extraction and process-ID pivoting were
   required to surface the responsible binary, its hash, and its parent
   process chain. The investigation ultimately revealed a typosquatted binary
-  (`SharePoInt.exe`) launched through legitimate Windows DCOM infrastructure
-  — a technique that deliberately borrows trusted process ancestry to evade
+  (`SharePoInt.exe`) launched through legitimate Windows DCOM infrastructure,
+   a technique that deliberately borrows trusted process ancestry to evade
   scrutiny.
 </Callout>
 
@@ -65,7 +65,7 @@ associated with it.
 When working with a SIEM on Windows environments, the two main data sources
 are typically **Windows Event Logs** and **Sysmon**. Sysmon must be
 installed and configured separately, but combining the two provides much
-clearer visibility into host activity — which proved essential here.
+clearer visibility into host activity, which proved essential here.
 
 ## Network Filter
 
@@ -109,14 +109,14 @@ not. What it returned was the first real signal in the investigation:
 #### Naming Convention Analysis
 
 The artifact was being spawned from an unusual directory, and the spelling
-was off — a capital "I" in the middle instead of a lowercase "i." The real
+was off, a capital "I" in the middle instead of a lowercase "i." The real
 product name is "SharePoint," and this is a classic typosquatting trick.
 Additionally, SharePoint isn't a desktop executable; rather, it's a
 web-based platform, either a server or a cloud service, which means there is
 no legitimate `SharePoint.exe` that runs as a local process on a client
 machine. On a SharePoint server itself, processes live under
 `C:\Program Files\Common Files\Microsoft Shared\Web Server Extensions\` or
-under IIS (`w3wp.exe`) — never in `C:\Windows\Temp`.
+under IIS (`w3wp.exe`) and never in `C:\Windows\Temp`.
 
 ## Field Extraction and Process Correlation
 
@@ -134,13 +134,13 @@ index=task4 host="WIN-105" AND DestinationPort="5678"
 This surfaced `EventCode=3` and `EventType=4`. Quick translation:
 
 - **EventCode 3** is the Sysmon code for a **network connection**.
-- **EventType 4** indicates an **audit success** — the logged action
+- **EventType 4** indicates an **audit success** in simple term the logged action
   completed, as opposed to being blocked or denied.
 
 Put together: **the binary successfully made a network connection.** Not
 attempted, not blocked. It got out.
 
-The `Hashes` field was still empty on this filter — `SharePoInt.exe`'s hash
+The `Hashes` field was still empty on this filter: `SharePoInt.exe`'s hash
 wasn't showing up here. I needed a better anchor than the port. I'd seen a
 `ProcessId` of **1460** appear earlier, so I pivoted on that instead of the
 network field:
@@ -163,11 +163,11 @@ MD5: 770D14FFA142F09730B415506249E7D1
 
 | Time     | EventCode | What It Means       | Detail                                                                                |
 | -------- | --------- | -------------------- | -------------------------------------------------------------------------------------- |
-| 11:07:29 | 1         | Process Created      | `C:\Windows\System32\dllhost.exe` — a legitimate Windows binary, likely the launcher    |
+| 11:07:29 | 1         | Process Created      | `C:\Windows\System32\dllhost.exe`. A legitimate Windows binary, likely the launcher    |
 | 11:10:22 | 1         | Process Created      | `C:\Windows\Temp\SharePoInt.exe` spawns (PID 1460), running as **Ben Foster**           |
-| 11:10:22 | 7         | Image/DLL Loaded     | `SharePoInt.exe` loads a module — happens the same second as creation                  |
-| 11:10:24 | 3         | Network Connection   | Connects out to **10.10.61.100:5678** — the C2 callback                                |
-| 11:14:39 | 11        | File Created         | Drops **`mtbogt.dll`** into `...AppData\Local\Temp\` — second-stage payload            |
+| 11:10:22 | 7         | Image/DLL Loaded     | `SharePoInt.exe` loads a module and this happens the same second as creation                  |
+| 11:10:24 | 3         | Network Connection   | Connects out to **10.10.61.100:5678**  the C2 callback                                |
+| 11:14:39 | 11        | File Created         | Drops **`mtbogt.dll`** into `...AppData\Local\Temp\` second-stage payload            |
 
 **VirusTotal**
 
@@ -180,7 +180,7 @@ safety, so I continued investigating rather than closing the alert out.
 
 ## Process Ancestry — Identifying the Launch Vector
 
-`dllhost.exe` had launched *before* `SharePoInt.exe`, at 11:07:29 — three
+`dllhost.exe` had launched *before* `SharePoInt.exe`, at 11:07:29, three
 minutes earlier. That timing wasn't a coincidence, and the path looked
 completely legitimate on its face. This pattern is consistent with **COM
 hijacking or DCOM abuse**, where Windows itself is used to launch malicious
@@ -201,7 +201,7 @@ This returned:
 C:\Windows\system32\svchost.exe -k DcomLaunch -p
 ```
 
-This is not a malicious-looking line on its own — it's the standard command
+This is not a malicious-looking line on its own, it's the standard command
 Windows uses to start the **DCOM Launch** service group, which is
 responsible for spinning up DCOM/COM server processes on demand. It runs on
 essentially every Windows machine, all the time. That is precisely what
@@ -223,7 +223,7 @@ svchost.exe -k DcomLaunch -p   (PID 736)
                └── drops mtbogt.dll (EventCode 11)
 ```
 
-This is consistent with a **DCOM-based remote execution technique** — an
+This is consistent with a **DCOM-based remote execution technique**, an
 attacker, likely from `10.10.61.100`, remotely instantiates a COM object;
 Windows spawns it through `dllhost.exe` exactly as designed; and the
 malicious binary executes underneath legitimate-looking process ancestry.
