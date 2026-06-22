@@ -1,0 +1,253 @@
+---
+title: "Alert Investigation Walkthrough — Suspicious Port 5678 Connection"
+category: "SOC INVESTIGATION"
+description: "Investigating a SIEM alert triggered by a suspicious outbound
+network connection on port 5678 from host WIN-105. Tracing the sequence of
+events through Sysmon process-creation logs, hash analysis, VirusTotal, and
+process-ancestry pivoting in Splunk to determine whether the activity
+represents a genuine threat or a false positive."
+thumbnail: "/dashboard-starting-point-alert.png"
+date: "June 2026"
+classification: "Technical / Incident Investigation"
+challenge: "SOC Investigation"
+analyst: "[Analyst Name]"
+tags:
+  [
+    "Network Security",
+    "DCOM Abuse",
+    "Typosquatting",
+    "SIEM",
+    "SOC",
+    "True Positive",
+    "VirusTotal",
+    "Sysmon",
+    "Process Ancestry",
+    "C2",
+    "Incident Response",
+    "Blue Team",
+    "Splunk",
+  ]
+status: "Completed"
+---
+
+## Executive Summary
+
+Investigated a SIEM alert triggered by a suspicious outbound network
+connection over port 5678 on host `WIN-105`. The goal was to determine
+whether the activity represented a genuine threat or a false positive by
+tracing the network event back to its originating process, analyzing the
+binary's name and execution path, and reconstructing the full process
+ancestry in Splunk.
+
+<Callout type="key">
+  **KEY INSIGHT:** A single network-port alert often arrives with little to
+  no process context attached. Field extraction and process-ID pivoting were
+  required to surface the responsible binary, its hash, and its parent
+  process chain. The investigation ultimately revealed a typosquatted binary
+  (`SharePoInt.exe`) launched through legitimate Windows DCOM infrastructure
+  — a technique that deliberately borrows trusted process ancestry to evade
+  scrutiny.
+</Callout>
+
+---
+
+## Investigation Approach
+
+I received an alert indicating a suspicious network connection using port
+5678 on the `WIN-105` host. My task was to determine whether this activity
+was malicious. To begin, I needed to understand the data available to me, so
+I started by filtering on `index=task4` to get an overview of the fields
+associated with it.
+
+![index overview](/index-task4-overview.png)
+![index overview-2](/index-task4-overview-2.png)
+
+When working with a SIEM on Windows environments, the two main data sources
+are typically **Windows Event Logs** and **Sysmon**. Sysmon must be
+installed and configured separately, but combining the two provides much
+clearer visibility into host activity — which proved essential here.
+
+## Network Filter
+
+To start the investigation, I filtered for the suspicious port and host
+directly:
+
+```spl
+index=task4 host="WIN-105" AND DestinationPort="5678"
+```
+
+This returned nothing. Rather than treating this as a dead end, I used
+**Extract New Fields** to surface fields that hadn't been listed under
+Splunk's Interesting Fields; specifically, fields related to IP addresses
+and ports. This surfaced additional fields I hadn't been working with. Once
+cleaned into a table:
+
+```spl
+index=task4 host="WIN-105" AND DestinationPort="5678"
+| table _time SourceIp SourcePort DestinationIp DestinationPort DestinationHostname host source
+```
+
+![destination port filter results](/destinationport-5678-table.png)
+
+## Process Identification
+
+From here, I pivoted toward identifying the process or service that
+initiated this connection:
+
+```spl
+index=task4 host="WIN-105" AND DestinationPort="5678"
+| table _time processId Image Hash
+```
+
+The `processId` and `Hash` fields returned empty, but the `Image` field did
+not. What it returned was the first real signal in the investigation:
+
+**`C:\Windows\Temp\SharePoInt.exe`**
+
+![SharePoInt.exe path with the typo highlighted](/01-sharepoint-typo.png)
+
+#### Naming Convention Analysis
+
+The artifact was being spawned from an unusual directory, and the spelling
+was off — a capital "I" in the middle instead of a lowercase "i." The real
+product name is "SharePoint," and this is a classic typosquatting trick.
+Additionally, SharePoint isn't a desktop executable; rather, it's a
+web-based platform, either a server or a cloud service, which means there is
+no legitimate `SharePoint.exe` that runs as a local process on a client
+machine. On a SharePoint server itself, processes live under
+`C:\Program Files\Common Files\Microsoft Shared\Web Server Extensions\` or
+under IIS (`w3wp.exe`) — never in `C:\Windows\Temp`.
+
+## Field Extraction and Process Correlation
+
+At this point, I had to dive deeper into this rabbit hole. To do this, I
+needed to make some adjustments to the filters to see what I could
+discover. The first thing I did was extract additional fields and move them
+from Unselected to Selected Fields. This approach added the information
+needed to hunt for the hash and parent process.
+
+```spl
+index=task4 host="WIN-105" AND DestinationPort="5678"
+| table _time EventCode EventType Image ProcessGuid ProcessId User Hashes
+```
+
+This surfaced `EventCode=3` and `EventType=4`. Quick translation:
+
+- **EventCode 3** is the Sysmon code for a **network connection**.
+- **EventType 4** indicates an **audit success** — the logged action
+  completed, as opposed to being blocked or denied.
+
+Put together: **the binary successfully made a network connection.** Not
+attempted, not blocked. It got out.
+
+The `Hashes` field was still empty on this filter — `SharePoInt.exe`'s hash
+wasn't showing up here. I needed a better anchor than the port. I'd seen a
+`ProcessId` of **1460** appear earlier, so I pivoted on that instead of the
+network field:
+
+```spl
+index=task4 host="WIN-105" AND ProcessId="1460"
+| table _time SourceIp DestinationPort EventCode Eventtype ProcessId User ProcessGuid Image TargetFilename Hashes
+```
+
+![pivoting on ProcessId 1460](/02-pivot-table.png)
+
+![hash values now visible for SharePoInt.exe](/03-hashes-table.png)
+
+The output from this filter told a clean story of process execution plus
+dropper behavior, and the hashes were now visible:
+
+```
+MD5: 770D14FFA142F09730B415506249E7D1
+```
+
+| Time     | EventCode | What It Means       | Detail                                                                                |
+| -------- | --------- | -------------------- | -------------------------------------------------------------------------------------- |
+| 11:07:29 | 1         | Process Created      | `C:\Windows\System32\dllhost.exe` — a legitimate Windows binary, likely the launcher    |
+| 11:10:22 | 1         | Process Created      | `C:\Windows\Temp\SharePoInt.exe` spawns (PID 1460), running as **Ben Foster**           |
+| 11:10:22 | 7         | Image/DLL Loaded     | `SharePoInt.exe` loads a module — happens the same second as creation                  |
+| 11:10:24 | 3         | Network Connection   | Connects out to **10.10.61.100:5678** — the C2 callback                                |
+| 11:14:39 | 11        | File Created         | Drops **`mtbogt.dll`** into `...AppData\Local\Temp\` — second-stage payload            |
+
+**VirusTotal**
+
+I ran the hash through VirusTotal, which returned no malicious indicators.
+No vendors had flagged the hash as malicious. Absence of a detection isn't
+the same as absence of evidence, however, especially with everything else
+already lined up. A clean VT result on a payload behaving exactly like this
+one is more often a sign of a new or low-prevalence file than a sign of
+safety, so I continued investigating rather than closing the alert out.
+
+## Process Ancestry — Identifying the Launch Vector
+
+`dllhost.exe` had launched *before* `SharePoInt.exe`, at 11:07:29 — three
+minutes earlier. That timing wasn't a coincidence, and the path looked
+completely legitimate on its face. This pattern is consistent with **COM
+hijacking or DCOM abuse**, where Windows itself is used to launch malicious
+code through a process chain that appears entirely routine.
+
+To investigate this further, I added `ParentCommandLine` to the table:
+
+```spl
+index=task4 host="WIN-105" AND ProcessId="1460"
+| table _time SourceIp DestinationPort EventCode Eventtype ProcessId User ProcessGuid Image TargetFilename Hashes ParentCommandline
+```
+
+![ParentCommandLine revealing the DCOM launch chain](/04-parent-commandline.png)
+
+This returned:
+
+```
+C:\Windows\system32\svchost.exe -k DcomLaunch -p
+```
+
+This is not a malicious-looking line on its own — it's the standard command
+Windows uses to start the **DCOM Launch** service group, which is
+responsible for spinning up DCOM/COM server processes on demand. It runs on
+essentially every Windows machine, all the time. That is precisely what
+makes it an effective cover for this technique.
+
+## Process Tree Reconstruction
+
+The infection chain did not begin with a suspicious parent, such as a
+malicious script or an Office macro. Instead, `dllhost.exe` was spawned
+through the legitimate DCOM launch service, and the COM object being
+instantiated led directly into the disguised payload:
+
+```
+svchost.exe -k DcomLaunch -p   (PID 736)
+   └── dllhost.exe              (PID 5240) — spawned via DCOM
+         └── SharePoInt.exe      (PID 1460) — the malicious file
+               ├── loads a module (EventCode 7)
+               ├── connects to 10.10.61.100:5678 (EventCode 3)
+               └── drops mtbogt.dll (EventCode 11)
+```
+
+This is consistent with a **DCOM-based remote execution technique** — an
+attacker, likely from `10.10.61.100`, remotely instantiates a COM object;
+Windows spawns it through `dllhost.exe` exactly as designed; and the
+malicious binary executes underneath legitimate-looking process ancestry.
+`10.10.61.100` may be both the delivery source and the C2 destination.
+
+---
+
+### Classification & Recommendation
+
+Given the typosquatted binary name, the non-standard execution path, the
+confirmed outbound connection to an external host, the dropped second-stage
+payload, and the DCOM-based launch vector, I classified this alert as a
+**True Positive** and escalated it to L2/IR.
+
+**Escalation Recommendation:**
+
+The current alert fired correctly on network behavior alone, but process
+and hash context were not surfaced by default and required manual field
+extraction and `ProcessId` pivoting to obtain. The following actions are
+recommended for L2/IR:
+
+- Isolate `WIN-105` to prevent further C2 communication or lateral movement
+- Block `10.10.61.100` (port 5678) at the perimeter/EDR level
+- Hunt environment-wide for the `SharePoInt.exe` / `mtbogt.dll` hashes
+- Sandbox both files to determine full capability and persistence mechanism
+- Investigate `10.10.61.100` for inbound DCOM/RPC traffic around 11:07:29 to
+  confirm the delivery vector
