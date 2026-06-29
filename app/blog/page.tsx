@@ -30,7 +30,6 @@ function getBlogs(): Blog[] {
 export default function BlogPage() {
   const studies = getBlogs();
 
-
   return (
     <section className="max-w-310 mx-auto px-6 py-16">
       <header className="fixed top-0 left-0 right-0 z-50 h-18 flex items-center bg-[rgba(13,10,9,0.9)] backdrop-blur-xl border-b border-[rgba(42,32,28,0.5)]">
@@ -63,16 +62,14 @@ export default function BlogPage() {
             key={study.slug}
             className="border border-border rounded-lg hover:border-primary transition-colors"
           >
-            <Link
-              href={`/blog/${study.slug}`}
-              className="flex flex-col gap-2 "
-            >
+            <Link href={`/blog/${study.slug}`} className="flex flex-col gap-2 ">
               <figure>
                 <Image
                   src={study.thumbnail}
                   alt={study.title || "case study image"}
-                  width={400}
+                  width={600}
                   height={100}
+                  layout="responsive"
                   className="object-cover"
                 />
               </figure>
