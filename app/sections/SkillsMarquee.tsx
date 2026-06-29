@@ -2,20 +2,20 @@
 
 import {
   Shield,
-  Lock,
+  //Lock,
   Eye,
   Bug,
   Cloud,
   Terminal,
-  Search,
+  //Search,
   FileWarning,
   Network,
   Server,
-  Fingerprint,
+  //Fingerprint,
   Radio,
   Radar,
   Siren,
-  Scan,
+  //Scan,
   Crosshair,
 } from "lucide-react";
 
@@ -25,8 +25,8 @@ const row1 = [
   { label: "Incident Response", icon: Siren },
   { label: "Malware Analysis", icon: Bug },
   { label: "Cloud Security", icon: Cloud },
-  { label: "Digital Forensics", icon: Fingerprint },
-  { label: "Vulnerability Assessment", icon: Scan },
+  //{ label: "Digital Forensics", icon: Fingerprint },
+  // { label: "Vulnerability Assessment", icon: Scan },
   { label: "Log Analysis", icon: Terminal },
 ];
 
@@ -34,10 +34,10 @@ const row2 = [
   { label: "Network Monitoring", icon: Network },
   { label: "IDS/IPS Management", icon: Radar },
   { label: "Endpoint Security", icon: Server },
-  { label: "Penetration Testing", icon: Lock },
+  // { label: "Penetration Testing", icon: Lock },
   { label: "Security Auditing", icon: Eye },
   { label: "Threat Intelligence", icon: Radio },
-  { label: "Forensic Investigation", icon: Search },
+  // { label: "Forensic Investigation", icon: Search },
   { label: "Risk Assessment", icon: FileWarning },
 ];
 

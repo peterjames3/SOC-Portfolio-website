@@ -5,9 +5,11 @@ import { FilterTabs } from "../FilterTabs";
 import { useIntersectionObserver } from "../../hooks/useIntersectionObserver";
 import type { CaseStudyFrontmatter } from "@/app/lib/caseStudies";
 import type { SelectedWorkFrontmatter } from "@/app/lib/selectedWorks";
+import type { WriteUpsFrontmatter } from "@/app/lib/writeUps"
 import { WorkSectionHeader } from "./WorkSectionHeader";
 import { SelectedWorkGrid } from "./SelectedWorkGrid";
 import { CaseStudiesList } from "./CaseStudiesList";
+import { WriteUpsList } from "./WriteUpList"
 
 const CATEGORIES = [
   "ALL",
@@ -22,9 +24,10 @@ const CATEGORIES = [
 interface WorkSectionProps {
   caseStudies: CaseStudyFrontmatter[];
   selectedWorks: SelectedWorkFrontmatter[];
+  writeups: WriteUpsFrontmatter[];
 }
 
-export function WorkSections({ caseStudies, selectedWorks }: WorkSectionProps) {
+export function WorkSections({ caseStudies, selectedWorks, writeups }: WorkSectionProps) {
   const [activeCategory, setActiveCategory] = useState("ALL");
   const { ref, isVisible } = useIntersectionObserver({ threshold: 0.1 });
 
@@ -60,6 +63,8 @@ export function WorkSections({ caseStudies, selectedWorks }: WorkSectionProps) {
           />
 
           <CaseStudiesList studies={caseStudies} />
+
+          <WriteUpsList writeups={writeups} />
         </div>
       </div>
     </section>

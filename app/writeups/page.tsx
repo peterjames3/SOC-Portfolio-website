@@ -63,7 +63,7 @@ export default function WriteUpsPage() {
             className="border border-border rounded-lg hover:border-primary transition-colors"
           >
             <Link
-              href={`/writeup/${writeup.slug}`}
+              href={`/writeups/${writeup.slug}`}
               className="flex flex-col gap-2 "
             >
               <figure>

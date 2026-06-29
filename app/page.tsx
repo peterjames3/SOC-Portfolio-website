@@ -12,10 +12,12 @@ import { BlogSection } from "@/app/components/blog/BlogSection"
 import { getAllCaseStudies } from "./lib/caseStudies";
 import { getAllSelectedWorks } from "@/app/lib/selectedWorks";
 import { getAllBlogs } from "@/app/lib/blogs";
+import { getAllWriteUps } from "@/app/lib/writeUps"
 export default function Home() {
   const caseStudies = getAllCaseStudies();
   const blogs = getAllBlogs();
   const selectedWorks = getAllSelectedWorks();
+  const writeups = getAllWriteUps();
   
   return (
     <>
@@ -24,7 +26,7 @@ export default function Home() {
         <HeroSection />
         <SkillsMarquee />
 
-        <WorkSections caseStudies={caseStudies} selectedWorks={selectedWorks} />
+        <WorkSections writeups={writeups} caseStudies={caseStudies} selectedWorks={selectedWorks} />
         <AboutSection />
         <ServicesSection />
         <CertificationsSection />
