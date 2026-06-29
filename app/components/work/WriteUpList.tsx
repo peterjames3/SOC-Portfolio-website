@@ -25,7 +25,7 @@ export function WriteUpsList({ writeups }: WriteUpsListProps) {
         ))}
       </div>
       <div className="max-w-7xl mt-10 mx-auto w-full px-6 md:px-12 lg:px-16 flex items-center justify-center">
-        <GhostButton href="/writeup">View All Write Ups</GhostButton>
+        <GhostButton href="/writeups">View All Write Ups</GhostButton>
       </div>
     </div>
   );
