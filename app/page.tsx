@@ -8,14 +8,15 @@ import { ServicesSection } from "./sections/ServicesSection";
 import { CertificationsSection } from "./sections/CertificationsSection";
 import { ContactSection } from "./sections/ContactSection";
 import { WorkSections } from "@/app/components/work/WorkSections";
-
+import { BlogSection } from "@/app/components/blog/BlogSection"
 import { getAllCaseStudies } from "./lib/caseStudies";
 import { getAllSelectedWorks } from "@/app/lib/selectedWorks";
+import { getAllBlogs } from "@/app/lib/blogs";
 export default function Home() {
   const caseStudies = getAllCaseStudies();
-  console.log("Loaded case studies:", caseStudies);
+  const blogs = getAllBlogs();
   const selectedWorks = getAllSelectedWorks();
-  console.log("Loaded selected works:", selectedWorks);
+  
   return (
     <>
       <Header />
@@ -27,6 +28,7 @@ export default function Home() {
         <AboutSection />
         <ServicesSection />
         <CertificationsSection />
+        <BlogSection blogs={blogs}  />
         <ContactSection />
       </main>
       <Footer />

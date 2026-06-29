@@ -6,7 +6,7 @@ interface SelectedWorksGridProps {
   activeCategory: string;
 }
 
-export function SelectedWorksGrid({
+export function SelectedWorkGrid({
   works,
   activeCategory,
 }: SelectedWorksGridProps) {

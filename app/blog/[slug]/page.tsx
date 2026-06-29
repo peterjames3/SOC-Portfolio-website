@@ -4,16 +4,16 @@ import remarkGfm from "remark-gfm";
 import NextImage from "next/image";
 import rehypeHighlight from "rehype-highlight";
 import {
-  getAllCaseStudySlugs,
-  getCaseStudyBySlug,
-} from "@/app/lib/caseStudies";
+  getAllBlogsSlugs,
+  getBlogsBySlug,
+} from "@/app/lib/blogs";
 import { Callout } from "@/app/components/Callout";
 import { GhostButton } from "@/app/components/GhostButton";
 import { Calendar, Shield, Tag, User } from "lucide-react";
 import Link from "next/link";
 
 export async function generateStaticParams() {
-  const slugs = getAllCaseStudySlugs();
+  const slugs = getAllBlogsSlugs();
   return slugs.map((slug) => ({ slug }));
 }
 
@@ -23,8 +23,8 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const study = getCaseStudyBySlug(slug);
-  if (!study) return { title: "Case Study Not Found" };
+  const study = getBlogsBySlug(slug);
+  if (!study) return { title: "Blog Not Found" };
   return {
     title: `${study.frontmatter.title} | SEC.OPS`,
     description: study.frontmatter.description,
@@ -159,7 +159,7 @@ export default async function CaseStudyPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const study = getCaseStudyBySlug(slug);
+  const study = getBlogsBySlug(slug);
 
   if (!study) {
     notFound();
@@ -173,12 +173,12 @@ export default async function CaseStudyPage({
       <header className="fixed top-0 left-0 right-0 z-50 h-18 flex items-center bg-[rgba(13,10,9,0.9)] backdrop-blur-xl border-b border-[rgba(42,32,28,0.5)]">
         <div className="max-w-7xl mx-auto w-full px-6 md:px-12 lg:px-16 flex items-center justify-between">
           <Link
-            href="/case-studies"
+            href="/blog"
             className="font-mono text-base font-medium tracking-widest text-text-primary hover:text-primary transition-colors duration-200"
           >
             SEC.OPS
           </Link>
-          <GhostButton href="/case-studies">Back to Portfolio</GhostButton>
+          <GhostButton href="/blog">Back to Portfolio</GhostButton>
         </div>
       </header>
 

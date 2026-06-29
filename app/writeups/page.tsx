@@ -5,7 +5,7 @@ import matter from "gray-matter";
 import Image from "next/image";
 import { GhostButton } from "@/app/components/GhostButton";
 
-interface CaseStudy {
+interface WriteUp {
   thumbnail: string;
   slug: string;
   title: string;
@@ -13,8 +13,8 @@ interface CaseStudy {
   summary: string;
 }
 
-function getCaseStudies(): CaseStudy[] {
-  const dir = path.join(process.cwd(), "markdown/case-studies");
+function getWriteUps(): WriteUp[] {
+  const dir = path.join(process.cwd(), "markdown/writeup");
   const files = fs.readdirSync(dir).filter((f) => f.endsWith(".mdx"));
 
   return files
@@ -22,14 +22,13 @@ function getCaseStudies(): CaseStudy[] {
       const slug = file.replace(".mdx", "");
       const source = fs.readFileSync(path.join(dir, file), "utf-8");
       const { data } = matter(source);
-      return { slug, ...data } as CaseStudy;
+      return { slug, ...data } as WriteUp;
     })
     .sort((a, b) => (a.date > b.date ? -1 : 1));
 }
 
-export default function CaseStudiesPage() {
-  const studies = getCaseStudies();
-
+export default function WriteUpsPage() {
+  const writeups = getWriteUps();
 
   return (
     <section className="max-w-310 mx-auto px-6 py-16">
@@ -55,22 +54,22 @@ export default function CaseStudiesPage() {
       </figure>
 
       <h2 className="font-mono text-3xl font-bold text-text-primary mb-10">
-        Case Studies
+        WriteUps
       </h2>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 lg:gap-10 rounded-sm shadow-sm ">
-        {studies.map((study) => (
+        {writeups.map((writeup) => (
           <article
-            key={study.slug}
+            key={writeup.slug}
             className="border border-border rounded-lg hover:border-primary transition-colors"
           >
             <Link
-              href={`/case-studies/${study.slug}`}
+              href={`/writeup/${writeup.slug}`}
               className="flex flex-col gap-2 "
             >
               <figure>
                 <Image
-                  src={study.thumbnail}
-                  alt={study.title || "case study image"}
+                  src={writeup.thumbnail}
+                  alt={writeup.title || "writeups image"}
                   width={400}
                   height={100}
                   className="object-cover"
@@ -78,10 +77,12 @@ export default function CaseStudiesPage() {
               </figure>
               <div className="px-2">
                 <h2 className="font-mono text-lg text-text-primary mb-1">
-                  {study.title}
+                  {writeup.title}
                 </h2>
-                <p className="text-text-tertiary text-xs mb-3">{study.date}</p>
-                <p className="text-text-secondary text-sm">{study.summary}</p>
+                <p className="text-text-tertiary text-xs mb-3">
+                  {writeup.date}
+                </p>
+                <p className="text-text-secondary text-sm">{writeup.summary}</p>
               </div>
             </Link>
           </article>

@@ -10,10 +10,10 @@ export function SelectedWorkCard({ work }: SelectedWorkCardProps) {
   return (
     <Link
       href={`/selected-work/${work.slug}`}
-      className="group bg-surface border border-border rounded overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] hover:-translate-y-1 hover:border-border-light hover:shadow-[0_8px_32px_rgba(0,0,0,0.3)] block"
+      className="group bg-surface border border-border rounded overflow-hidden transition-all duration-300 ease-in-out hover:-translate-y-1 hover:border-border-light hover:shadow-[0_8px_32px_rgba(0,0,0,0.3)] block"
     >
       {/* Thumbnail */}
-      <div className="aspect-[16/10] overflow-hidden">
+      <div className="aspect-16/10 overflow-hidden">
         <Image
           src={work.thumbnail}
           alt={work.title}
@@ -29,11 +29,11 @@ export function SelectedWorkCard({ work }: SelectedWorkCardProps) {
       {/* Content */}
       <div className="p-6">
         <div className="flex items-center gap-2 mb-2">
-          <span className="font-mono text-[11px] font-normal tracking-[0.1em] uppercase text-primary">
+          <span className="font-mono text-[11px] font-normal tracking-widest uppercase text-primary">
             {work.category}
           </span>
           <span className="w-1 h-1 rounded-full bg-text-tertiary" />
-          <span className="font-mono text-[10px] tracking-[0.05em] text-text-tertiary">
+          <span className="font-mono text-[10px] tracking-wider text-text-tertiary">
             {work.date}
           </span>
         </div>
@@ -62,7 +62,7 @@ export function SelectedWorkCard({ work }: SelectedWorkCardProps) {
 
         {/* Footer */}
         <div className="flex items-center justify-between mt-4 pt-4 border-t border-border">
-          <span className="font-mono text-[10px] tracking-[0.05em] text-text-tertiary">
+          <span className="font-mono text-[10px] tracking-wider text-text-tertiary">
             {work.challenge}
           </span>
           <span className="font-mono text-[11px] text-primary group-hover:translate-x-1 transition-transform duration-200">

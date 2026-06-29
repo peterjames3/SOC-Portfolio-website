@@ -6,7 +6,7 @@ import { useIntersectionObserver } from "../../hooks/useIntersectionObserver";
 import type { CaseStudyFrontmatter } from "@/app/lib/caseStudies";
 import type { SelectedWorkFrontmatter } from "@/app/lib/selectedWorks";
 import { WorkSectionHeader } from "./WorkSectionHeader";
-import { SelectedWorksGrid } from "./SelectedWorksGrid";
+import { SelectedWorkGrid } from "./SelectedWorkGrid";
 import { CaseStudiesList } from "./CaseStudiesList";
 
 const CATEGORIES = [
@@ -35,13 +35,13 @@ export function WorkSections({ caseStudies, selectedWorks }: WorkSectionProps) {
 
   return (
     <section id="work" className="py-20 md:py-32">
-      <div className="max-w-[1280px] mx-auto px-6 md:px-12 lg:px-16">
+      <div className="max-w-7xl mx-auto px-6 md:px-12 lg:px-16">
         <div
           ref={ref}
-          className={`transition-all duration-700 ease-[cubic-bezier(0.4,0,0.2,1)] ${
+          className={`transition-all duration-700 ease-in-out ${
             isVisible
               ? "opacity-100 translate-y-0"
-              : "opacity-0 translate-y-[30px]"
+              : "opacity-0 translate-y-7.5"
           }`}
         >
           <WorkSectionHeader />
@@ -54,7 +54,7 @@ export function WorkSections({ caseStudies, selectedWorks }: WorkSectionProps) {
             />
           </div>
 
-          <SelectedWorksGrid
+          <SelectedWorkGrid
             works={filteredWorks}
             activeCategory={activeCategory}
           />

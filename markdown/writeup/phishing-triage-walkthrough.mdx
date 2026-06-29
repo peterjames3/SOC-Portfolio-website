@@ -1,5 +1,5 @@
 ---
-title: "Alert Investigation Walkthrough — ID 1000"
+title: "Alert Investigation Walkthrough — ID 1009"
 category: "SOC INVESTIGATION"
 description: "Investigating a SIEM alert triggered by an inbound email
 from an external sender with an unusual top-level domain. Tracing the
@@ -76,13 +76,13 @@ From here i proceeded with email header analysis using public sources. To start 
 
 **WHOIS - DomainTools**
 
-WHOIS via DomainTools showed that the domain was only available for sale, with no user or organization listed a the registrant and no WHOIS record associated with it.
+WHOIS via DomainTools showed that the domain was only available for sale, with no user or organization listed as the registrant and no WHOIS record associated with it.
 
 ![domain tools result](/whois-record.png)
 
 **DNS Resolution - URLScan.io, nslookup, ping**
 
-Tools and commands including URLScan.io, nslookup and ping returned no results, meaning I could not resolve an IP addree behind the Domain
+Tools and commands including URLScan.io, nslookup and ping returned no results, meaning I could not resolve an IP address behind the Domain
 
 ![urlscan results](/urlscan.png)
 
@@ -94,7 +94,7 @@ I inspected for SPF, DMARC, and DKIM records, returning no results. No email aut
 
 **VirusTotal**
 After some back and forth with various tools, I decided to check the domain on VirusTotal, which returned no malicious indicators. No vendors had flagged the domain as malicious.
-Notably, the domain had been submitted to virustotal 3 days prior to my investigation, and the somments on the details tab all pointed to one thing:
+Notably, the domain had been submitted to virustotal 3 days prior to my investigation, and the comments on the details tab all pointed to one thing:
 
 > _"Is trendymillineryco.me a known business partner? No. it looks
 > like a random, cheap domain often used by attackers."_
@@ -114,7 +114,7 @@ never request banking credentials in the first correspondence. this is a clear s
 
 The attacker used the word **"immediately"** to create a sense of urgency. this attempts to bypass the victim's critical thinking, forcing them to act fast without verifying the source.
 
-## SIEM Pivot- Outbound Communication Check
+## SIEM Pivot: Outbound Communication Check
 
 I returned to the SIEM to check whether the support email had sent anything to the sender, sung the filter below:
 

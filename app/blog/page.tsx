@@ -5,7 +5,7 @@ import matter from "gray-matter";
 import Image from "next/image";
 import { GhostButton } from "@/app/components/GhostButton";
 
-interface CaseStudy {
+interface Blog {
   thumbnail: string;
   slug: string;
   title: string;
@@ -13,8 +13,8 @@ interface CaseStudy {
   summary: string;
 }
 
-function getCaseStudies(): CaseStudy[] {
-  const dir = path.join(process.cwd(), "markdown/case-studies");
+function getBlogs(): Blog[] {
+  const dir = path.join(process.cwd(), "markdown/blog");
   const files = fs.readdirSync(dir).filter((f) => f.endsWith(".mdx"));
 
   return files
@@ -22,13 +22,13 @@ function getCaseStudies(): CaseStudy[] {
       const slug = file.replace(".mdx", "");
       const source = fs.readFileSync(path.join(dir, file), "utf-8");
       const { data } = matter(source);
-      return { slug, ...data } as CaseStudy;
+      return { slug, ...data } as Blog;
     })
     .sort((a, b) => (a.date > b.date ? -1 : 1));
 }
 
-export default function CaseStudiesPage() {
-  const studies = getCaseStudies();
+export default function BlogPage() {
+  const studies = getBlogs();
 
 
   return (
@@ -55,7 +55,7 @@ export default function CaseStudiesPage() {
       </figure>
 
       <h2 className="font-mono text-3xl font-bold text-text-primary mb-10">
-        Case Studies
+        Blogs
       </h2>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 lg:gap-10 rounded-sm shadow-sm ">
         {studies.map((study) => (
@@ -64,7 +64,7 @@ export default function CaseStudiesPage() {
             className="border border-border rounded-lg hover:border-primary transition-colors"
           >
             <Link
-              href={`/case-studies/${study.slug}`}
+              href={`/blog/${study.slug}`}
               className="flex flex-col gap-2 "
             >
               <figure>

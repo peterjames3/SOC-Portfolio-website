@@ -1,16 +1,16 @@
 import Image from "next/image";
 import Link from "next/link";
-import type { CaseStudyFrontmatter } from "@/app/lib/caseStudies";
+import type { BlogsFrontmatter } from "@/app/lib/blogs";
 
-interface CaseStudyRowProps {
-  study: CaseStudyFrontmatter;
+interface BlogsRowProps {
+  blog: BlogsFrontmatter;
   index: number;
 }
 
-export function CaseStudyRow({ study, index }: CaseStudyRowProps) {
+export function BlogRow({ blog, index }: BlogsRowProps) {
   return (
     <Link
-      href={`/case-studies/${study.slug}`}
+      href={`/blog/${blog.slug}`}
       className="group block border border-border rounded bg-surface transition-all duration-300 ease-in-out hover:-translate-y-1 hover:border-border-light hover:shadow-[0_8px_32px_rgba(0,0,0,0.3)] animate-fade-in-up"
       style={{ animationDelay: `${index * 0.1}s` }}
     >
@@ -18,8 +18,8 @@ export function CaseStudyRow({ study, index }: CaseStudyRowProps) {
         {/* Thumbnail */}
         <div className="w-full md:w-48 h-24 rounded overflow-hidden shrink-0">
           <Image
-            src={study.thumbnail}
-            alt={study.title}
+            src={blog.thumbnail}
+            alt={blog.title}
             width={400}
             height={200}
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
@@ -33,29 +33,29 @@ export function CaseStudyRow({ study, index }: CaseStudyRowProps) {
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2 mb-2">
             <span className="font-mono text-[10px] font-medium tracking-widest uppercase text-primary">
-              {study.category}
+              {blog.category}
             </span>
             <span className="w-1 h-1 rounded-full bg-text-tertiary" />
             <span className="font-mono text-[10px] tracking-wider text-text-tertiary">
-              {study.challenge}
+              {blog.challenge}
             </span>
             <span className="w-1 h-1 rounded-full bg-text-tertiary" />
             <span className="font-mono text-[10px] tracking-wider text-text-tertiary">
-              {study.date}
+              {blog.date}
             </span>
           </div>
 
           <h3 className="font-body text-lg font-medium text-text-primary group-hover:text-primary transition-colors duration-200 mb-1.5 truncate">
-            {study.title}
+            {blog.title}
           </h3>
 
           <p className="font-body text-sm text-text-secondary line-clamp-2 leading-relaxed">
-            {study.description}
+            {blog.description}
           </p>
 
           {/* Tags */}
           <div className="flex flex-wrap gap-1.5 mt-3">
-            {(study.tags ?? []).slice(0, 5).map((tag) => (
+            {(blog.tags ?? []).slice(0, 5).map((tag) => (
               <span
                 key={tag}
                 className="px-2 py-0.5 border border-border rounded-sm font-mono text-[10px] text-text-tertiary"

@@ -27,7 +27,7 @@ export function StatCounter({
           <span>0{suffix}</span>
         )}
       </div>
-      <div className="font-body text-[12px] font-medium uppercase tracking-[0.08em] text-text-secondary mt-1">
+      <div className="font-body text-p font-medium uppercase tracking-[0.08em] text-text-secondary mt-1">
         {label}
       </div>
     </div>

@@ -63,8 +63,8 @@ function MarqueeRow({
             key={`${item.label}-${i}`}
             className="inline-flex items-center gap-2.5 px-5 py-2.5 border border-border rounded bg-[rgba(26,20,18,0.4)]"
           >
-            <item.icon size={14} className="text-primary flex-shrink-0" />
-            <span className="font-mono text-[12px] font-normal tracking-[0.05em] uppercase text-text-secondary">
+            <item.icon size={14} className="text-primary shrink-0" />
+            <span className="font-mono text-p font-normal tracking-wider uppercase text-text-secondary">
               {item.label}
             </span>
           </div>
@@ -78,7 +78,7 @@ export function SkillsMarquee() {
   return (
     <section
       id="marquee"
-      className="py-8 border-y border-border overflow-hidden"
+      className="py-8 border-y border-border overflow-hidden max-w-310 mx-auto px-6"
     >
       <MarqueeRow items={row1} direction="left" />
       <MarqueeRow items={row2} direction="right" />
