@@ -45,8 +45,8 @@ export default function WriteUpsPage() {
       </header>
       <figure className="W-full h-auto mb-6">
         <Image
-          src="/siem-dashboard.webp"
-          alt="case studies  banner image"
+          src="/virus-total_1.png"
+          alt="write ups  banner image"
           width={1200}
           height={200}
           className="object-cover"
@@ -70,8 +70,9 @@ export default function WriteUpsPage() {
                 <Image
                   src={writeup.thumbnail}
                   alt={writeup.title || "writeups image"}
-                  width={400}
+                  width={600}
                   height={100}
+                  layout="responsive"
                   className="object-cover"
                 />
               </figure>
