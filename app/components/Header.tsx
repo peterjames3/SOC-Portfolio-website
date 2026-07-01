@@ -86,7 +86,7 @@ export function Header() {
             {/* Name + title */}
             <div className="flex flex-col gap-[3px]">
               <span className="font-body text-[18px] font-semibold text-text-primary leading-none tracking-[0.01em] group-hover:text-primary transition-colors duration-200">
-                James Kamau
+                Kamau James
               </span>
               <span className="font-mono text-[14px] text-text-tertiary leading-none tracking-[0.04em]">
                 SOC Analyst

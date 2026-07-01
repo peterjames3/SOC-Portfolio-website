@@ -10,7 +10,7 @@ interface WriteUpsRowProps {
 export function WriteUpsRow({ writeup, index }: WriteUpsRowProps) {
   return (
     <Link
-      href={`/writeup/${writeup.slug}`}
+      href={`/writeups/${writeup.slug}`}
       className="group block border border-border rounded bg-surface transition-all duration-300 ease-in-out hover:-translate-y-1 hover:border-border-light hover:shadow-[0_8px_32px_rgba(0,0,0,0.3)] animate-fade-in-up"
       style={{ animationDelay: `${index * 0.1}s` }}
     >
