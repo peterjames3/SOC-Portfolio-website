@@ -36,13 +36,13 @@ export function ServicesSection() {
 
   return (
     <section id="services" className="py-20 md:py-32">
-      <div className="max-w-[1280px] mx-auto px-6 md:px-12 lg:px-16">
+      <div className="max-w-7xl mx-auto px-6 md:px-12 lg:px-16">
         <div
           ref={ref}
-          className={`transition-all duration-700 ease-[cubic-bezier(0.4,0,0.2,1)] ${
+          className={`transition-all duration-700 ease-in-out ${
             isVisible
               ? "opacity-100 translate-y-0"
-              : "opacity-0 translate-y-[30px]"
+              : "opacity-0 translate-y-7.5"
           }`}
         >
           {/* Section Header */}
@@ -51,7 +51,7 @@ export function ServicesSection() {
             <h2 className="font-display text-[28px] md:text-[42px] font-normal leading-[1.15] text-text-primary mt-4">
               Technical Capabilities
             </h2>
-            <p className="font-body text-base text-text-secondary leading-relaxed mt-3 max-w-[600px]">
+            <p className="font-body text-base text-text-secondary leading-relaxed mt-3 max-w-150">
               Core disciplines honed through real-world incident response,
               threat hunting operations, and enterprise security architecture.
             </p>

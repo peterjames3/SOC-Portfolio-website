@@ -8,13 +8,13 @@ export function AboutSection() {
 
   return (
     <section id="about" className="py-20 md:py-32 bg-surface">
-      <div className="max-w-[1280px] mx-auto px-6 md:px-12 lg:px-16">
+      <div className="max-w-7xl mx-auto px-6 md:px-12 lg:px-16">
         <div
           ref={ref}
-          className={`transition-all duration-700 ease-[cubic-bezier(0.4,0,0.2,1)] ${
+          className={`transition-all duration-700 ease-in-out ${
             isVisible
               ? "opacity-100 translate-y-0"
-              : "opacity-0 translate-y-[30px]"
+              : "opacity-0 translate-y-7.5"
           }`}
         >
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-start">
@@ -39,12 +39,12 @@ export function AboutSection() {
                   and independent investigation. As an IT Audit Analyst at EBN
                   Advisory LLP, I review security controls, investigate
                   suspicious events using log data, and produce audit-ready
-                  reports that clients can act on. In parallel, I&apos;ve conducted
-                  full forensic investigations through platforms like Elastic
-                  Security and the KC7 Cybersecurity Challenge — including a
-                  multi-stage phishing and lateral movement case where I traced
-                  an attacker from initial email delivery all the way to
-                  fraudulent content being published.
+                  reports that clients can act on. In parallel, I&apos;ve
+                  conducted full forensic investigations through platforms like
+                  Elastic Security and the KC7 Cybersecurity Challenge —
+                  including a multi-stage phishing and lateral movement case
+                  where I traced an attacker from initial email delivery all the
+                  way to fraudulent content being published.
                 </p>
                 <p>
                   My approach begins with curiosity. I don&apos;t just respond
@@ -56,9 +56,9 @@ export function AboutSection() {
                 <p>
                   I&apos;m currently working toward my ISC2 Cybersecurity
                   certification and progressing through the TryHackMe SOC Path.
-                  I&apos;m open to full-time roles and contract security engagements
-                  where I can contribute to a team that takes detection and
-                  response seriously.
+                  I&apos;m open to full-time roles and contract security
+                  engagements where I can contribute to a team that takes
+                  detection and response seriously.
                 </p>
               </div>
 
@@ -91,11 +91,10 @@ export function AboutSection() {
 
                     "Wazuh",
                     "Osquery",
-                    "MITRE ATT&CK",
                   ].map((tool) => (
                     <span
                       key={tool}
-                      className="px-3 py-1.5 border border-border rounded-sm font-mono text-[11px] font-normal tracking-[0.05em] text-text-secondary bg-[rgba(26,20,18,0.6)]"
+                      className="px-3 py-1.5 border border-border rounded-sm font-mono text-[11px] font-normal tracking-wider text-text-secondary bg-[rgba(26,20,18,0.6)]"
                     >
                       {tool}
                     </span>
@@ -109,23 +108,16 @@ export function AboutSection() {
                   Languages & Scripting
                 </h3>
                 <div className="flex flex-wrap gap-2">
-                  {[
-                    "Python",
-                    "PowerShell",
-                    "Bash",
-                    "KQL",
-                    "SPL",
-                    "Sigma",
-                    "SQL",
-                    "Regex",
-                  ].map((lang) => (
-                    <span
-                      key={lang}
-                      className="px-3 py-1.5 border border-border rounded-sm font-mono text-[11px] font-normal tracking-[0.05em] text-text-secondary bg-[rgba(26,20,18,0.6)]"
-                    >
-                      {lang}
-                    </span>
-                  ))}
+                  {["PowerShell", "Bash", "KQL", "SPL", "Sigma", "SQL"].map(
+                    (lang) => (
+                      <span
+                        key={lang}
+                        className="px-3 py-1.5 border border-border rounded-sm font-mono text-[11px] font-normal tracking-wider text-text-secondary bg-[rgba(26,20,18,0.6)]"
+                      >
+                        {lang}
+                      </span>
+                    ),
+                  )}
                 </div>
               </div>
 
@@ -135,16 +127,19 @@ export function AboutSection() {
                   Platforms
                 </h3>
                 <div className="flex flex-wrap gap-2">
-                  {["Active Directory", "Azure", "Linux", "Windows Server", "VMware"].map(
-                    (platform) => (
-                      <span
-                        key={platform}
-                        className="px-3 py-1.5 border border-border rounded-sm font-mono text-[11px] font-normal tracking-[0.05em] text-text-secondary bg-[rgba(26,20,18,0.6)]"
-                      >
-                        {platform}
-                      </span>
-                    ),
-                  )}
+                  {[
+                    "Active Directory",
+                    "Linux",
+                    "Windows Server",
+                    "VMware",
+                  ].map((platform) => (
+                    <span
+                      key={platform}
+                      className="px-3 py-1.5 border border-border rounded-sm font-mono text-[11px] font-normal tracking-wider text-text-secondary bg-[rgba(26,20,18,0.6)]"
+                    >
+                      {platform}
+                    </span>
+                  ))}
                 </div>
               </div>
             </div>

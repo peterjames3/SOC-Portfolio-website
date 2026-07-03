@@ -1,0 +1,358 @@
+---
+title: "Alert Investigation Walkthrough — Backdoor User Account Creation"
+category: "SOC INVESTIGATION"
+description: "Investigating anomalous Windows logs indicating an adversary
+created a backdoor local account. Tracing the compromise from account
+creation (Event ID 4720) through registry evidence, remote WMI execution,
+logon attempts, and a fully de-obfuscated PowerShell C2 stager in Splunk to
+determine scope and intent."
+thumbnail: "/splunk-index-overiew.png"
+date: "May 2022 (log timeframe) / June 2026 (write-up)"
+classification: "Technical / Incident Investigation"
+challenge: "SOC Investigation"
+analyst: "Johnny"
+tags:
+  [
+    "Windows Security",
+    "PowerShell",
+    "WMI",
+    "Persistence",
+    "Typosquatting",
+    "AMSI Bypass",
+    "SIEM",
+    "SOC",
+    "True Positive",
+    "Sysmon",
+    "Process Ancestry",
+    "C2",
+    "RC4",
+    "Incident Response",
+    "Blue Team",
+    "Splunk",
+  ]
+status: "Completed"
+---
+
+## Executive Summary
+
+Investigated anomalous behavior across a handful of Windows hosts that
+indicated an adversary had gained access and created a backdoor local
+account. The goal was to determine the infected host, reconstruct how the
+account was created, confirm whether the backdoor was ever used to log on,
+and trace the full attack chain back to its PowerShell-based entry point.
+
+<Callout type="key">
+  **KEY INSIGHT:** The attacker never touched the victim host directly for
+  account creation, an already-compromised host issued a remote WMI call
+  (`WMIC.exe /node:`) that spawned `net user /add` on the target through the WMI
+  Provider Host. The created account (`A1berto`, typosquatting the
+  legitimate-looking `Alberto`) was never logged into, meaning it was
+  pre-positioned for later use rather than actively leveraged. Separately, a
+  heavily obfuscated PowerShell stager disabled Script Block Logging and AMSI
+  before beaconing to a C2 server and pulling a second-stage payload entirely
+  into memory.
+</Callout>
+
+---
+
+## Investigation Approach
+
+There was no detailed information available about the compromised endpoint,
+the user behind it, or the source IP address, in short, little to no
+visibility into what was happening going in. The only clues available were
+that the environment consisted of Windows machines and that a backdoor
+account had been created somewhere.
+
+To begin, I uploaded the logs to Splunk and filtered on `index=main`,
+setting the timeframe to **All Time** to make sure the full extent of the
+compromise was covered. The search returned 12,256 events, with several
+fields worth investigating further.
+
+![index overview](/splunk-index-overiew.png)
+
+When working with a SIEM on Windows environments, the two main data sources
+are typically **Windows Event Logs** and **Sysmon**. Combining the two, as
+was available here, provided much clearer visibility into host activity
+than either could offer alone.
+
+## Account Creation : Identifying the Infected Host
+
+To create a user on a Windows machine, the attacker must, at some point,
+trigger **Event ID 4720** (a user account was created). Since there was no
+lead yet on which hostname was involved, I applied a general filter and
+built a table including `_time`, `category`, `Hostname`, `Channel`, and
+`Message`.
+
+```spl
+index=main EventID=4720
+| table _time category Hostname Channel Message
+```
+
+The output made it clear that at **2022-05-11 22:32:18**, a user account
+management event was logged on the `Micheal.Beaven` host. The initiating
+account was `James`, and the account created was:
+
+- **Account Name:** `A1berto`
+- **Account Domain:** `WORKSTATION6`
+
+**MITRE ATT&CK mapping:** T1136.001 — Create Account: Local Account
+(Persistence)
+
+## Registry Correlation : Confirming the Account Write
+
+The next step was to track the registry key modified when the new backdoor
+user was created. I pivoted to **Sysmon Event ID 13** (registry
+value-set), filtered on `Hostname=Micheal.Beaven`. This returned 10 events.
+Rather than inspecting each one individually, I filtered directly for the
+account name in the `TargetObject` field:
+
+```spl
+index=main EventID=13 Hostname="Micheal.Beaven" TargetObject="*A1berto*"
+| table _time TargetObject Image EventType
+```
+
+![registry value set event for A1berto](/registry-value-set-event.png)
+
+The output was clean and confirmatory. At 22:32:18, a registry value-set
+event was logged with the following details:
+
+- **TargetObject:** `HKLM\SAM\SAM\Domains\Account\Users\Names\A1berto\(Default)`
+- **Image:** `C:\windows\system32\lsass.exe`
+- **Category:** Registry value set (Sysmon RegistryEvent rule)
+
+This is a registry write under the **SAM (Security Account Manager)** hive,
+specifically the `Names` subkey, which Windows maintains as a lookup path
+mapping usernames to their SIDs. The presence of `A1berto` here confirms a
+local user account with that name was created on the host, and `lsass.exe`
+is the process responsible, which tracks, since `lsass.exe` is the
+legitimate Windows process that handles account creation and credential
+changes in the SAM database.
+
+#### Naming Convention Analysis
+
+The created account name showed a clear element of typosquatting: the
+digit "1" in place of the letter "l" in `A1berto`, versus the
+legitimate-looking `Alberto`. This is a deliberate attempt to blend a
+backdoor account into normal admin activity at a glance.
+
+**MITRE ATT&CK mapping:** T1136.001 — Create Account: Local Account
+(Persistence); T1036 — Masquerading (Defense Evasion)
+
+Since this activity sat in the middle of the attack lifecycle, the
+investigation could branch either backward toward the point of entry or
+forward toward lateral movement, credential access, and exfiltration. I
+chose to continue tracing the account-creation chain first before jumping
+back to the initial PowerShell entry point.
+
+## Process Ancestry : Identifying the Launch Vector
+
+Before hunting for the specific account-creation command, I checked the
+parent-child process relationship to determine what spawned `lsass.exe`,
+and whether that parent process was legitimate.
+
+Per MITRE ATT&CK, adversaries commonly create local accounts using built-in
+OS tools: `net user /add` on Windows, `useradd` on Linux, `dscl -create` on
+macOS. Detection strategy **AN1235** lists the tools attackers commonly use
+for this purpose on Windows: `net user /add`, PowerShell, or WMI. The
+expected detection sequence is an account creation event (4720) following
+the process creation of a suspicious executable such as `powershell.exe` or
+`net.exe`.
+
+I pivoted to process creation events, preferring **Sysmon Event ID 1** over
+**Windows Security Event 4688**, since Sysmon exposes fields like
+`ParentImage`, `ParentCommandLine`, `Hashes`, and `IntegrityLevel` that
+4688 does not.
+
+> **Note on wildcard matching:** a pattern with no trailing wildcard only
+> matches a string that _ends_ exactly where the pattern ends, for
+> example, `Image="*powershell"` will never match the real image path
+> `powershell.exe`, since the string doesn't end in the letter "l." The
+> fix is `Image="*powershell*"`.
+
+```spl
+index=main EventID=1 (Image="*\\net1.exe" OR Image="*\\net.exe" OR Image="*powershell*" OR Image="*WMIC*") CommandLine="*user*add*"
+| table _time Hostname User Image ParentImage CommandLine ParentCommandLine
+| sort -_time
+```
+
+![process lineage table for the WMIC-driven account creation](/wmic-driven-account-creation.png)
+
+The process lineage became clear: PowerShell launched WMIC; WMIC reached
+out to `WORKSTATION6` using the `/node:` switch; the WMI Provider Host
+(`WmiPrvSE.exe`) on the victim received the remote call and spawned
+`net.exe`, which in turn spawned the actual worker binary `net1.exe`.
+
+## Process Tree Reconstruction
+
+The infection chain did not begin with a suspicious parent directly on the
+target, instead, the compromised host issued a remote WMI call, and
+Windows spawned the account-creation process chain on `WORKSTATION6`
+exactly as designed, underneath legitimate-looking process ancestry:
+
+```
+powershell.exe
+  └── WMIC.exe             "...WMIC.exe" /node:WORKSTATION6 process call create "net user /add Alberto paw0rd1"
+        ↓ (over DCOM/RPC to WORKSTATION6)
+WmiPrvSE.exe                                    ← WMI Provider Host receives the remote call
+  └── net.exe              net user /add Alberto paw0rd1
+        └── net1.exe        C:\windows\system32\net1 user /add Alberto paw0rd1
+              └── lsass.exe writes HKLM\SAM\...\Names\A1berto  (EventID 13)
+```
+
+This is consistent with a **WMI-based remote execution technique**: an
+attacker, operating from an already-compromised host, remotely invokes
+`process call create` against `WORKSTATION6`; Windows spawns the requested
+command through the WMI Provider Host exactly as designed; and the backdoor
+account gets created underneath a process chain that looks routine at a
+glance.
+
+**MITRE ATT&CK mapping:** T1047 — Windows Management Instrumentation
+(Execution); T1021.006 — Remote Services: WMI (Lateral Movement);
+T1136.001 — Create Account: Local Account (Persistence)
+
+## Logon Validation : Was the Backdoor Ever Used?
+
+The next objective was to check how many times a login attempt from the
+backdoor user was observed. I pivoted on Windows Security Event 4625
+(failed logon) and 4624 (successful logon), filtered for `A1berto`. Before
+trusting any field, I first visualized what was actually populated:
+
+```spl
+index=main (EventID=4624 OR EventID=4625)
+| table _time Hostname Account_Name TargetUserName SubjectUserName user Logon_Type EventID
+```
+
+![field population check for 4624/4625 events](/field-population-check.png)
+
+This confirmed I had been guessing at the wrong fields. The output showed:
+
+- `Account_Name` → **empty** for every row (not populated in this sourcetype)
+- `user` → **empty**
+- `Logon_Type` → **empty**
+- `TargetUserName` → **populated**; the correct field to use
+- `SubjectUserName` → populated, but represents the _initiating_ account
+  (e.g., `WORKSTATION5$`, a computer account) rather than the account
+  logging on
+
+With that confirmed, I updated the query to filter on the backdoor username
+and count by `EventID` and `Hostname`:
+
+```spl
+index=main (EventID=4624 OR EventID=4625) TargetUserName="A1berto"
+| stats count by EventID Hostname
+```
+
+![zero logon results for A1berto](/zero-logon-results-for-A1berto.png)
+
+Neither successful nor failed logon events were observed for the backdoor
+account. Before concluding, I widened the filter with a wildcard to catch
+any spelling variation, since `Alberto` (letter "l") and `A1berto` (digit
+"1") are visually near-identical in most fonts:
+
+```spl
+index=main (EventID=4624 OR EventID=4625) TargetUserName="*lberto*"
+| stats count by EventID Hostname TargetUserName
+```
+
+This also returned zero events, confirming the attacker never attempted to
+log in using the newly created backdoor account, it had been pre-positioned
+rather than actively used.
+
+**MITRE ATT&CK mapping:** T1078.003 — Valid Accounts: Local Accounts
+(Defense Evasion / Persistence / Privilege Escalation / Initial Access)
+
+## Root Cause : The PowerShell Entry Point
+
+With the account-creation chain fully mapped, I traced back to the initial
+foothold: which host actually executed the suspicious PowerShell that
+started everything. A general search for the keyword `powershell` returned
+198 events, and the message body of the first event contained an encoded
+command.
+
+![encoded PowerShell launcher in event message](/encoded-powershell-launcher.png)
+
+The flag signature `-noP -sta -w 1 -enc` is a strong indicator of
+compromise, it's a near-universal launcher signature used by offensive
+PowerShell frameworks. `-noP` skips loading a user profile, `-w 1` sets the
+window style to Hidden so the process runs invisibly, and `-enc` (short for
+`-EncodedCommand`) bypasses casual inspection of the execution policy and
+command content entirely.
+
+**MITRE ATT&CK mapping:** T1059.001 — Command and Scripting Interpreter:
+PowerShell (Execution); T1027 — Obfuscated Files or Information (Defense
+Evasion)
+
+### Decoding the Stager
+
+I decoded the command in CyberChef using **From Base64** followed by
+**Decode Text**. Both steps are required because PowerShell's
+`-EncodedCommand` flag accepts a Base64-encoded UTF-16LE string, the input
+is encoded as UTF-16LE bytes _before_ being converted to Base64, so
+decoding requires reversing both steps.
+
+![CyberChef decode recipe output](/cyberchef-decode-recipe-output.png)
+
+The decoded script broke down into six distinct stages:
+
+| Stage                             | Behavior                                                                                                                                                                                                                                                   | MITRE Mapping                                                           |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| 1. Version check                  | Branches on `$PSVersionTable.PSVersion.Major -ge 3`; PowerShell v2 uses a different bypass (patches `ScriptBlock.signatures` instead)                                                                                                                      | —                                                                       |
+| 2. Script Block Logging disable   | Reflectively accesses the cached Group Policy settings object, forces `EnableScriptBlockLogging` / `EnableScriptBlockInvocationLogging` to `0`, then writes a fake in-memory dictionary so re-reads still report logging disabled, defeating Event ID 4104 | T1562.002 — Impair Defenses: Disable Windows Event Logging              |
+| 3. AMSI bypass                    | Sets the internal `amsiInitFailed` flag to `true` via reflection, tricking PowerShell into skipping AMSI scanning for the rest of the session                                                                                                              | T1562.001 — Impair Defenses: Disable or Modify Tools                    |
+| 4. HTTP beacon setup              | Builds a `WebClient`, spoofs an IE11 User-Agent, inherits system proxy/credentials, and Base64/UTF-16LE-decodes the C2 IP (`10.10.10.5`) at runtime                                                                                                        | T1071.001 — Web Protocols (C2); T1027 — Obfuscated Files or Information |
+| 5. RC4 setup                      | Implements RC4 KSA + PRGA inline using a static key, the same construct seen across Empire-derived stagers                                                                                                                                                 | T1573.001 — Encrypted Channel: Symmetric Cryptography                   |
+| 6. Check-in and stage-2 retrieval | GETs `http://10.10.10.5/news.php`, splits the first 4 response bytes off as an IV, RC4-decrypts the remainder with `IV + key`, and pipes the result straight into `IEX`, executing entirely in memory                                                      | T1105 — Ingress Tool Transfer                                           |
+
+The single most telling artifact in the whole script was the string
+pattern `amsiInitFailed`, it has appeared in Empire, Metasploit, and
+countless proof-of-concept tools for years and is often flagged by
+up-to-date AV/EDR products even with randomized casing, as seen throughout
+this script.
+
+## MITRE ATT&CK Mapping Summary
+
+| Tactic                                     | Technique                                            | ID                | Evidence                                                                                                                                                                                                                |
+| ------------------------------------------ | ---------------------------------------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Execution                                  | Command and Scripting Interpreter: PowerShell        | T1059.001         | Encoded PowerShell launcher (`-noP -sta -w 1 -enc`) observed on the initial host                                                                                                                                        |
+| Execution                                  | Windows Management Instrumentation                   | T1047             | `WMIC.exe /node:WORKSTATION6 process call create` used to execute commands remotely                                                                                                                                     |
+| Persistence / Privilege Escalation         | Create Account: Local Account                        | T1136.001         | `net user /add Alberto paw0rd1` executed via `net1.exe`, confirmed by Event ID 4720 and the SAM registry write                                                                                                          |
+| Defense Evasion                            | Masquerading                                         | T1036             | Typosquatted account name `A1berto` (digit "1") impersonating a legitimate-looking `Alberto` account                                                                                                                    |
+| Defense Evasion                            | Impair Defenses: Disable or Modify Tools             | T1562.001         | AMSI bypass via `amsiInitFailed` field patch                                                                                                                                                                            |
+| Defense Evasion                            | Indicator Removal / Impair Logging                   | T1070 / T1562.002 | Script Block Logging forcibly disabled (`EnableScriptBlockLogging` set to 0), defeating Event ID 4104                                                                                                                   |
+| Defense Evasion                            | Obfuscated Files or Information: Command Obfuscation | T1027 / T1027.010 | Base64(UTF-16LE)-encoded PowerShell command, random-case cmdlet obfuscation, nested Base64-encoded C2 IP                                                                                                                |
+| Lateral Movement                           | Remote Services: Windows Management Instrumentation  | T1021.006\*       | WMI-based remote execution from the attacker's host to `WORKSTATION6` (\*ATT&CK also cross-lists this activity under T1047 Execution; included here to reflect the lateral-movement aspect of the remote `/node:` call) |
+| Command and Control                        | Application Layer Protocol: Web Protocols            | T1071.001         | HTTP GET beacon to `http://10.10.10.5/news.php` disguised with a spoofed IE11 User-Agent                                                                                                                                |
+| Command and Control                        | Encrypted Channel: Symmetric Cryptography            | T1573.001         | RC4 stream cipher used to encrypt the stage-2 payload in transit                                                                                                                                                        |
+| Command and Control                        | Ingress Tool Transfer                                | T1105             | Stage-2 payload downloaded from the C2 server and executed in memory via `IEX`                                                                                                                                          |
+| Credential Access (potential, unconfirmed) | Valid Accounts: Local Accounts                       | T1078.003         | No logon activity (4624/4625) observed for the backdoor account, account appears pre-positioned but not yet used                                                                                                        |
+
+---
+
+### Classification & Recommendation
+
+Given the encoded/obfuscated PowerShell launcher, the confirmed AMSI and
+Script Block Logging bypasses, the remote WMI-driven creation of a
+typosquatted backdoor account, and the live RC4-encrypted C2 beacon
+pulling a second-stage payload into memory, I classified this alert as a
+**True Positive** and escalated it to L2/IR.
+
+**Escalation Recommendation:**
+
+The backdoor account itself generated no logon telemetry, meaning host
+enumeration by account activity alone would have missed it entirely; only
+process-ancestry and registry pivoting surfaced the full chain. The
+following actions are recommended for L2/IR:
+
+- Isolate `Micheal.Beaven` and `WORKSTATION6` to prevent further C2
+  communication or use of the pre-positioned backdoor account
+- Disable/rotate the `A1berto` local account on `WORKSTATION6` and audit
+  for any other typosquatted local accounts across the environment
+- Block `10.10.10.5` (HTTP, port 80, path `/news.php`) at the
+  perimeter/EDR level
+- Hunt environment-wide for the `-noP -sta -w 1 -enc` launcher signature
+  and the `amsiInitFailed` string pattern
+- Re-enable and verify Script Block Logging (Event ID 4104) group policy
+  on affected hosts, since the malware's tampering only persists for the
+  current session
+- Sandbox the decoded stage-2 payload retrieval to determine full
+  capability and persistence mechanism
