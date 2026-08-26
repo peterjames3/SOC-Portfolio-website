@@ -1,0 +1,312 @@
+---
+title: "Building Resilient Backup Automation: From an rclone Script to a systemd Service"
+category: "SECURITY ENGINEERING"
+description: "A walkthrough of building an automated, multi-directory backup pipeline with rclone and systemd — silent failures, per-user config traps, a lowercase directive that quietly ran a service as root, and why rclone sync needs --backup-dir before you trust it with anything named Backups."
+thumbnail: "/rclone_pipeline.webp"
+date: "August 2026"
+classification: "Technical / Educational"
+challenge: "Security Engineering Series"
+analyst: "Kamau James"
+tags:
+  [
+    "Linux",
+    "systemd",
+    "rclone",
+    "Backup Automation",
+    "Bash",
+    
+  ]
+status: "Completed"
+---
+
+# Building Resilient Backup Automation: From an rclone Script to a systemd Service
+
+> **Security Engineering **
+> Analyst: Kamau James | Date: August 2026 | Classification: Training / Educational
+
+---
+
+## Executive Summary
+
+Not every SOC skill gets exercised during an investigation. Some of it shows up in the quiet work of making sure the infrastructure around you actually holds up: logs that persist across reboots, backups that survive an accidental delete, services that run with the privilege they're supposed to have and nothing more.
+
+This post builds an automated, multi-directory backup pipeline using rclone and systemd, from a single sync script to a boot-time service, including every place it broke and what that revealed.
+
+<Callout type="key">
+  **KEY INSIGHT:** Every failure in this build was silent, or pointed at the
+  wrong cause. An empty log file, a `status=1/FAILURE` in the journal, a
+  lowercase letter in a unit file — none of them announced what was actually
+  wrong. The habit that solved all of it was the same one every time: stop
+  guessing, go verify directly.
+</Callout>
+
+---
+
+## Section 1 — The Goal
+
+The objective was simple on paper: take a handful of local document folders — audit resources, CV collections, compliance docs, SOC reference material — and mirror each one to its own folder in cloud storage, automatically, every time the machine booted.
+
+In practice it touched shell scripting discipline, file permissions, systemd unit syntax, and a backup design decision that almost undermined the entire point of having a backup in the first place.
+
+---
+
+## Section 2 — Starting Point: A Single Sync Script
+
+The first version was a straightforward wrapper around `rclone sync`, using strict bash mode so the script would fail loudly instead of limping along after an error:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+SOURCE_DIR="$HOME/Documents/Backups"
+REMOTE_DEST="Backup_svc:backups"
+LOG_FILE="$HOME/.config/rclone/logs/backup.log"
+
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting backup..." >> "$LOG_FILE"
+
+rclone sync "$SOURCE_DIR" "$REMOTE_DEST" \
+    --log-file="$LOG_FILE" \
+    --log-level INFO \
+    --transfers 4 \
+    --checkers 8 \
+    --fast-list
+
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Backup completed successfully." >> "$LOG_FILE"
+```
+
+`set -euo pipefail` is worth calling out on its own:
+
+| Flag | Effect |
+| ---- | ------ |
+| `-e` | Exit immediately if any command fails |
+| `-u` | Treat unset variables as an error |
+| `-o pipefail` | Fail a pipeline if any stage of it fails |
+
+It's a small habit that pays for itself the moment something goes quietly wrong.
+
+---
+
+## Section 3 — Moving to /opt: The First Real Bug
+
+Once the script worked, the next step was making it system-owned rather than tied to a single user's home directory, which meant relocating it to `/opt/backup-rclone/`. This is where the first real debugging session started.
+
+Running the script produced nothing — no output, no error, an empty log file. The instinct here matters as much as the fix: rather than guessing, the right move was to trace execution directly.
+
+```bash
+bash -x bin/backup-rclone.sh
+```
+
+The trace showed the script running fine, right up to:
+
+```
++ LOG_FILE=/home/hanzo/opt/backup-rclone/logs/backup.log
+```
+
+The bug was a leftover `$HOME` reference in the log path. The script was quietly writing logs to a completely different directory than the one being checked. Nothing was broken in the sync logic at all — it just wasn't writing where anyone was looking.
+
+<Callout type="lesson">
+  **LESSON:** When a script produces zero output and zero errors, that is not
+  proof it did nothing. It is a sign to trace execution rather than assume
+  the failure point.
+</Callout>
+
+---
+
+## Section 4 — The Config Mismatch: A Lesson in Per-User State
+
+With the log path fixed, a new and more informative error appeared:
+
+```
+NOTICE: Config file "/root/.config/rclone/rclone.conf" not found - using defaults
+CRITICAL: Failed to create file system for "Backup_svc:backups": didn't find section in config file ("Backup_svc")
+```
+
+The script had been run as root, but the rclone remote (`Backup_svc`) had been configured under a regular user account. rclone configuration is per-user by default, so root looking for it found nothing. Running the same script as the correct user immediately worked:
+
+```bash
+sudo -u hanzo bin/backup-rclone.sh
+```
+
+This is a small thing that scales into a real operational risk. A backup, monitoring, or automation script that silently runs as the wrong user does not always fail this loudly. Sometimes it just runs with the wrong permissions, or against the wrong configuration, and nobody notices until the day it matters.
+
+---
+
+## Section 5 — Automating with systemd, and a Lowercase Letter That Broke Everything
+
+With the script working manually, the next step was wiring it into systemd so it would run automatically at boot:
+
+```ini
+[Unit]
+Description=Rclone backup of Documents/Backups on boot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=hanzo
+ExecStart=/opt/backup-rclone/bin/backup-rclone.sh
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`After=` and `Wants=network-online.target` matter more than they look. Without them, systemd may start the service before the network is actually up, and a sync job that depends on reaching a remote server will fail for reasons that have nothing to do with the script itself.
+
+The service still failed. The journal only said `Main process exited, code=exited, status=1/FAILURE` — a symptom, not a cause. The actual reason was sitting in the unit file itself:
+
+```
+user=hanzo
+```
+
+Lowercase. systemd directives are case sensitive, and `user=` is not a directive systemd recognizes.
+
+#### Normal vs Abnormal
+
+```ini
+# ✅ Correct — systemd recognizes this directive
+User=hanzo
+```
+
+```ini
+# ❌ Silently ignored — not a recognized directive
+# Service falls back to running as root
+user=hanzo
+```
+
+<Callout type="danger">
+  **DANGER:** systemd did not warn about the unrecognized directive. It did
+  not error. It just quietly defaulted to running the service with more
+  privilege than intended. A subtly wrong or altered `User=` line in a unit
+  file that nobody notices because there is no error is exactly the kind of
+  thing worth checking for when reviewing services on a system that is not
+  your own.
+</Callout>
+
+---
+
+## Section 6 — The Part That Almost Undermined the Whole Project
+
+The script used `rclone sync`, which makes the destination match the source exactly, including deletions. That's by design, and it's also a trap. The very first successful log run demonstrated it directly:
+
+```
+INFO  : AI_data_specialist.pdf: Deleted
+```
+
+Delete a file locally, and on the next run it disappears from the cloud copy too. For a folder literally named "Backups," that defeats the purpose. A backup that faithfully mirrors an accidental deletion is not protecting against accidental deletion.
+
+```bash
+# ❌ Destructive — deletions propagate to the remote with no recovery path
+rclone sync "$SOURCE_DIR" "$REMOTE_DEST" \
+    --log-file="$LOG_FILE" \
+    --log-level INFO
+```
+
+```bash
+# ✅ Safe — deleted files are archived, not destroyed
+rclone sync "$SOURCE_DIR" "$REMOTE_DEST" \
+    --backup-dir="${REMOTE_NAME}:${dir}-deleted/$(date '+%Y-%m-%d')" \
+    --log-file="$LOG_FILE" \
+    --log-level INFO
+```
+
+`--backup-dir` tells rclone to move anything that would be deleted into a separate, dated archive folder instead of deleting it outright. The live folder stays a clean, current mirror of the local directory. Anything removed locally still exists, recoverable, under a dated folder like `SOC-Resources-deleted/2026-08-26/`. It's a small addition that turns a mirror into an actual safety net.
+
+---
+
+## Section 7 — Scaling to Multiple Directories
+
+The final version moved from a single source and destination to a loop over a list of named folders, each syncing to its own matching remote folder with its own deleted-file archive:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+REMOTE_NAME="Backup_svc"
+LOG_FILE="/opt/backup-rclone/logs/backup.log"
+
+DIRS=(
+    "Audit-Resources"
+    "CVs-collection"
+    "GOK-DOCs"
+    "SOC-Resources"
+)
+
+BASE_DIR="/home/hanzo/Documents/Backups"
+
+mkdir -p "$(dirname "$LOG_FILE")"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting backup run..." >> "$LOG_FILE"
+
+for dir in "${DIRS[@]}"; do
+    SOURCE_DIR="$BASE_DIR/$dir"
+    REMOTE_DEST="${REMOTE_NAME}:${dir}"
+
+    if [ ! -d "$SOURCE_DIR" ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] WARNING: $SOURCE_DIR does not exist, skipping." >> "$LOG_FILE"
+        continue
+    fi
+
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Syncing $dir -> $REMOTE_DEST" >> "$LOG_FILE"
+
+    rclone sync "$SOURCE_DIR" "$REMOTE_DEST" \
+        --backup-dir="${REMOTE_NAME}:${dir}-deleted/$(date '+%Y-%m-%d')" \
+        --log-file="$LOG_FILE" \
+        --log-level INFO \
+        --transfers 4 \
+        --checkers 8 \
+        --fast-list
+done
+
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Backup run completed successfully." >> "$LOG_FILE"
+```
+
+The existence check before each sync matters as much as the loop itself. With `set -e` active, one missing folder would otherwise kill the entire run and skip every directory after it. Instead, a missing folder logs a warning and the script moves on — the difference between a partial success and a silent total failure.
+
+Even this had one more lesson waiting. The first run produced four warnings, every folder reported missing, despite all four existing and being spelled correctly:
+
+```
+WARNING: /home/hanzo/Documents/Audit-Resources does not exist, skipping.
+WARNING: /home/hanzo/Documents/CVs-collection does not exist, skipping.
+WARNING: /home/hanzo/Documents/GOK-DOCs does not exist, skipping.
+WARNING: /home/hanzo/Documents/SOC-Resources does not exist, skipping.
+```
+
+The base path in the script pointed at `~/Documents`, while the folders actually lived one level deeper, at `~/Documents/Backups`. Confirmed with a quick directory listing, fixed with a one-line path change. A reminder that "the names are right" and "the path is right" are two different things worth checking separately.
+
+---
+
+## Section 8 — Where This Connects to Verification Discipline
+
+The habit that actually solved every bug in this build was the same one each time: stop guessing, go verify directly.
+
+| Question | Command |
+| -------- | ------- |
+| What is the script actually doing? | `bash -x bin/backup-rclone.sh` |
+| Who is a process actually running as? | `/proc/<pid>/exe`, `systemctl show -p MainPID` |
+| What does the unit file actually say? | `systemctl cat <service>` |
+| Does that remote folder actually exist as named? | `rclone lsd <remote>:` |
+
+That's a small, unglamorous version of the same discipline that shows up in incident response: do not trust the label on the tin, verify the contents.
+
+---
+
+## High-Value Failure Modes: Quick Reference
+
+| Symptom | Real Cause | How It Was Found |
+| ------- | ---------- | ----------------- |
+| Empty log, no output | Stray `$HOME` reference writing logs to the wrong path | `bash -x` trace |
+| `didn't find section in config file` | Script run as root, rclone remote configured under a regular user | Reading the error, checking `whoami` vs config location |
+| `status=1/FAILURE` in journal | Lowercase `user=` instead of `User=` in the unit file | `systemctl cat` on the unit |
+| Files vanish from remote after local deletion | `rclone sync` mirrors deletions by default | Reading the sync log line by line |
+| Every folder reported "does not exist" | Base path one directory level too shallow | Directory listing (`ls`) against the script's assumed path |
+
+## Key Takeaways from Day 1
+
+**Silence is not success.** None of the bugs in this build were exotic — a stray `$HOME`, a per-user config file, a lowercase letter in a systemd directive, a sync mode with a destructive default, a base path one level off. What ties them together is that every single one failed silently, or failed with an error message that pointed somewhere other than the real cause.
+
+**A fact is not an explanation.** `status=1/FAILURE` in a systemd journal is a fact, not an explanation. An empty log file is a fact, not proof of nothing happening.
+
+**Mirrors are not backups.** `rclone sync` without `--backup-dir` faithfully reproduces an accidental deletion on the remote. A backup that mirrors deletions defeats its own purpose.
+
+**Verify, don't assume.** Trace the script with `bash -x`. Check who a process is actually running as. Read the unit file back rather than trusting memory of what was typed. Confirm a remote folder's exact name rather than assuming it matches. This is the same discipline that shows up in incident response, applied to infrastructure that's supposed to be boring.
+
+##
