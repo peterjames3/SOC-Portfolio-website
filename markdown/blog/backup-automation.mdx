@@ -1,11 +1,11 @@
 ---
-title: "Building Resilient Backup Automation: From an rclone Script to a systemd Service"
-category: "SECURITY ENGINEERING"
+title: "In the Quest to Learn Linux Services, I Ended Up Building Resilient Backup Automation: From an rclone Script to a systemd Service"
+category: "Linux Services"
 description: "A walkthrough of building an automated, multi-directory backup pipeline with rclone and systemd — silent failures, per-user config traps, a lowercase directive that quietly ran a service as root, and why rclone sync needs --backup-dir before you trust it with anything named Backups."
-thumbnail: "/rclone_pipeline.svg"
+thumbnail: "/rclone_pipeline.webp"
 date: "August 2026"
 classification: "Technical / Educational"
-challenge: "Security Engineering Series"
+challenge: "Linux Service"
 analyst: "Kamau James"
 tags:
   [
@@ -28,7 +28,7 @@ status: "Completed"
 
 ## Executive Summary
 
-Not every SOC skill gets exercised during an investigation. Some of it shows up in the quiet work of making sure the infrastructure around you actually holds up: logs that persist across reboots, backups that survive an accidental delete, services that run with the privilege they're supposed to have and nothing more.
+Whether you're hosting a web application, setting up a backup script, or hunting persistence achieved by installing a service on Linux, knowing how to create Linux service files is a fundamental skill for any Linux administrator, developer, or threat hunter. Not every SOC skill gets exercised during an investigation. Some of it shows up in the quiet work of making sure the infrastructure around you actually holds up: logs that persist across reboots, backups that survive an accidental delete, services that run with the privilege they're supposed to have and nothing more.
 
 This post builds an automated, multi-directory backup pipeline using rclone and systemd, from a single sync script to a boot-time service, including every place it broke and what that revealed.
 
@@ -37,7 +37,9 @@ This post builds an automated, multi-directory backup pipeline using rclone and 
   wrong cause. An empty log file, a `status=1/FAILURE` in the journal, a
   lowercase letter in a unit file — none of them announced what was actually
   wrong. The habit that solved all of it was the same one every time: stop
-  guessing, go verify directly.
+  guessing, go verify directly. Things this project touched that are core to
+  understanding Linux services include: unit file sections, systemctl as an
+  inspection tool, service types, and privilege and identity.
 </Callout>
 
 ---
@@ -50,9 +52,64 @@ In practice it touched shell scripting discipline, file permissions, systemd uni
 
 ---
 
-## Section 2 — Starting Point: A Single Sync Script
+## Section 2 — Understanding Linux Services (Daemons)
 
-The first version was a straightforward wrapper around `rclone sync`, using strict bash mode so the script would fail loudly instead of limping along after an error:
+In Linux and Unix, a service (often called a daemon) is a program that runs continuously in the background. Unlike applications that require user interaction, daemons start automatically when the system boots up, run silently without an attached terminal, and wait for specific events or requests.
+
+Common examples include web servers (`nginx`, `apache2`), database servers (`mysql`, `postgresql`), and remote access tools (`sshd`). Daemons typically end with the letter "d" to signify their background nature.
+
+### The Evolution of Linux Init Systems
+
+To understand how to **create a Linux service** configuration today, it helps to understand how Linux manages them. The very first process started by the Linux kernel upon booting is the **init system** (always assigned Process ID 1). This system is responsible for starting other services. It continues running until the system is shut down.
+
+It is the direct or indirect ancestor of all other processes and automatically adopts all orphaned processes; in most Unix-like systems, a kernel panic will occur if the kernel is unable to start it or if it dies for any reason.
+
+Historically, Linux used SysVinit (System V init). Administrators had to write complex, lengthy Bash shell scripts placed in `/etc/init.d/` and manage "runlevels" to dictate boot order.
+
+The majority of modern Linux distributions (including Ubuntu, Debian, RHEL, CentOS, and Fedora) have standardized on a much more powerful and unified init system called **`systemd`**.
+
+### What Is systemd?
+
+systemd is a suite of basic building blocks for a Linux system, acting primarily as an **`initialization system`** and **`service manager`**. It was designed to overcome the limitations of SysVinit by offering:
+
+- **Parallelization:** It can start multiple services at the same time, significantly reducing boot times.
+- **On-demand starting:** It can defer starting a service until a specific socket or hardware is accessed.
+- **Dependency management:** It strictly understands which services rely on others.
+- **Process tracking:** It uses Linux control groups (cgroups) to track processes, meaning a service can't escape being stopped by "forking" itself twice.
+
+Because `systemd` is the modern standard, when you create a Linux service today, it means writing a systemd **`unit file`**.
+
+### Service Configuration: Structure of a Unit File
+
+In the systemd environment, a configuration file that defines a service is called a **`unit file`**. These files are declarative — meaning you simply state what you want the service to do, rather than writing a complex script telling it how to do it.
+
+**A standard unit file is divided into three main sections:**
+
+- **`[Unit]`**: Contains **metadata** and **dependencies**. It describes what the unit is, its documentation, and its relationship to other units (e.g., start this after the network is up).
+- **`[Service]`**: Contains the specific configuration for the service itself. This includes the command to execute, the user to run as, and how to handle restarts if the service crashes.
+- **`[Install]`**: Dictates behavior when the unit is enabled or disabled. It tells systemd which "target" (system state) should trigger this service to start on boot.
+
+### Types of System Services (Unit Types)
+
+- **`.service`**: A standard system service (a background process).
+- **`.socket`**: Used for socket-based activation. systemd listens on a port and starts the associated `.service` only when traffic arrives.
+- **`.timer`**: A systemd timer that acts like a cron job, triggering a service at specific times or intervals.
+- **`.target`**: A logical grouping of units, used to represent a system state (e.g., `multi-user.target` is the equivalent of a fully booted system without a GUI).
+- **`.mount`**: Controls mounting directories in the file system.
+
+### Understanding Dependencies and Boot Order
+
+One of systemd's greatest strengths is how it handles boot order. You configure this in the `[Unit]` section using specific directives:
+
+- `Requires=`: A hard dependency — if your service requires Service B, and Service B fails or stops, your service will also be stopped.
+- `Wants=`: A soft dependency — if your service wants Service B, systemd will try to start Service B; however, if Service B fails, your service will still continue to run. (This is generally preferred over `Requires=`.)
+- `After=` / `Before=`: These dictate order, not dependencies. If you use `After=network.target`, systemd guarantees the network target is reached before it attempts to start your service.
+
+---
+
+## Section 3 — Starting Point: A Single Sync Script
+
+To keep this post shorter, I skipped the rclone installation and Google Drive API setup steps. The first version was a straightforward wrapper around `rclone sync`, using strict bash mode so the script would fail loudly instead of limping along after an error:
 
 ```bash
 #!/usr/bin/env bash
@@ -86,7 +143,7 @@ It's a small habit that pays for itself the moment something goes quietly wrong.
 
 ---
 
-## Section 3 — Moving to /opt: The First Real Bug
+## Section 4 — Moving to /opt: The First Real Bug
 
 Once the script worked, the next step was making it system-owned rather than tied to a single user's home directory, which meant relocating it to `/opt/backup-rclone/`. This is where the first real debugging session started.
 
@@ -112,7 +169,7 @@ The bug was a leftover `$HOME` reference in the log path. The script was quietly
 
 ---
 
-## Section 4 — The Config Mismatch: A Lesson in Per-User State
+## Section 5 — The Config Mismatch: A Lesson in Per-User State
 
 With the log path fixed, a new and more informative error appeared:
 
@@ -131,7 +188,7 @@ This is a small thing that scales into a real operational risk. A backup, monito
 
 ---
 
-## Section 5 — Automating with systemd, and a Lowercase Letter That Broke Everything
+## Section 6 — Automating with systemd, and a Lowercase Letter That Broke Everything
 
 With the script working manually, the next step was wiring it into systemd so it would run automatically at boot:
 
@@ -150,7 +207,7 @@ ExecStart=/opt/backup-rclone/bin/backup-rclone.sh
 WantedBy=multi-user.target
 ```
 
-`After=` and `Wants=network-online.target` matter more than they look. Without them, systemd may start the service before the network is actually up, and a sync job that depends on reaching a remote server will fail for reasons that have nothing to do with the script itself.
+`After=network-online.target` and `Wants=network-online.target` matter more than they look. Without them, systemd may start the service before the network is actually up, and a sync job that depends on reaching a remote server will fail for reasons that have nothing to do with the script itself.
 
 The service still failed. The journal only said `Main process exited, code=exited, status=1/FAILURE` — a symptom, not a cause. The actual reason was sitting in the unit file itself:
 
@@ -160,7 +217,7 @@ user=hanzo
 
 Lowercase. systemd directives are case sensitive, and `user=` is not a directive systemd recognizes.
 
-#### Normal vs Abnormal
+#### Normal vs. Abnormal
 
 ```ini
 # ✅ Correct — systemd recognizes this directive
@@ -184,7 +241,7 @@ user=hanzo
 
 ---
 
-## Section 6 — The Part That Almost Undermined the Whole Project
+## Section 7 — The Part That Almost Undermined the Whole Project
 
 The script used `rclone sync`, which makes the destination match the source exactly, including deletions. That's by design, and it's also a trap. The very first successful log run demonstrated it directly:
 
@@ -213,7 +270,7 @@ rclone sync "$SOURCE_DIR" "$REMOTE_DEST" \
 
 ---
 
-## Section 7 — Scaling to Multiple Directories
+## Section 8 — Scaling to Multiple Directories
 
 The final version moved from a single source and destination to a loop over a list of named folders, each syncing to its own matching remote folder with its own deleted-file archive:
 
@@ -261,7 +318,7 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] Backup run completed successfully." >> "$LO
 
 The existence check before each sync matters as much as the loop itself. With `set -e` active, one missing folder would otherwise kill the entire run and skip every directory after it. Instead, a missing folder logs a warning and the script moves on — the difference between a partial success and a silent total failure.
 
-Even this had one more lesson waiting. The first run produced four warnings, every folder reported missing, despite all four existing and being spelled correctly:
+Even this had one more lesson waiting. The first run produced four warnings: every folder reported missing, despite all four existing and being spelled correctly.
 
 ```
 WARNING: /home/hanzo/Documents/Audit-Resources does not exist, skipping.
@@ -270,11 +327,11 @@ WARNING: /home/hanzo/Documents/GOK-DOCs does not exist, skipping.
 WARNING: /home/hanzo/Documents/SOC-Resources does not exist, skipping.
 ```
 
-The base path in the script pointed at `~/Documents`, while the folders actually lived one level deeper, at `~/Documents/Backups`. Confirmed with a quick directory listing, fixed with a one-line path change. A reminder that "the names are right" and "the path is right" are two different things worth checking separately.
+The base path in the script pointed at `~/Documents`, while the folders actually lived one level deeper, at `~/Documents/Backups`. This was confirmed with a quick directory listing and fixed with a one-line path change — a reminder that "the names are right" and "the path is right" are two different things worth checking separately.
 
 ---
 
-## Section 8 — Where This Connects to Verification Discipline
+## Section 9 — Where This Connects to Verification Discipline
 
 The habit that actually solved every bug in this build was the same one each time: stop guessing, go verify directly.
 
@@ -294,7 +351,7 @@ That's a small, unglamorous version of the same discipline that shows up in inci
 | Symptom | Real Cause | How It Was Found |
 | ------- | ---------- | ----------------- |
 | Empty log, no output | Stray `$HOME` reference writing logs to the wrong path | `bash -x` trace |
-| `didn't find section in config file` | Script run as root, rclone remote configured under a regular user | Reading the error, checking `whoami` vs config location |
+| `didn't find section in config file` | Script run as root, rclone remote configured under a regular user | Reading the error, checking `whoami` vs. config location |
 | `status=1/FAILURE` in journal | Lowercase `user=` instead of `User=` in the unit file | `systemctl cat` on the unit |
 | Files vanish from remote after local deletion | `rclone sync` mirrors deletions by default | Reading the sync log line by line |
 | Every folder reported "does not exist" | Base path one directory level too shallow | Directory listing (`ls`) against the script's assumed path |
@@ -308,5 +365,3 @@ That's a small, unglamorous version of the same discipline that shows up in inci
 **Mirrors are not backups.** `rclone sync` without `--backup-dir` faithfully reproduces an accidental deletion on the remote. A backup that mirrors deletions defeats its own purpose.
 
 **Verify, don't assume.** Trace the script with `bash -x`. Check who a process is actually running as. Read the unit file back rather than trusting memory of what was typed. Confirm a remote folder's exact name rather than assuming it matches. This is the same discipline that shows up in incident response, applied to infrastructure that's supposed to be boring.
-
-##

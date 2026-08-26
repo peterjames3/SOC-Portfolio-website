@@ -3,7 +3,7 @@ import { Playfair_Display, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { ToastContainer } from "react-toastify";
 import ScrollToTopBtn from "./components/scroll-to-top-btn";
-
+import { Analytics } from "@vercel/analytics/next"
 const playfair = Playfair_Display({
   subsets: ["latin"],
   variable: "--font-playfair",
@@ -98,6 +98,7 @@ export default function RootLayout({
         <body
           className={`${playfair.variable} ${inter.variable}  ${jetbrains.variable} antialiased bg-background`}
         >
+          <Analytics/>
         
           {/* <Navbar /> */}
           {children}
