@@ -21,7 +21,7 @@ status: "Completed"
 
 # Building Resilient Backup Automation: From an rclone Script to a systemd Service
 
-> **Security Engineering Series — Day 1**
+> **Linux Service**
 > Analyst: Kamau James | Date: August 2026 | Classification: Training / Educational
 
 ---
@@ -241,7 +241,75 @@ user=hanzo
 
 ---
 
-## Section 7 — The Part That Almost Undermined the Whole Project
+## Section 7 — Deploying the Service: daemon-reload and Verification
+
+Writing the unit file isn't enough on its own. Every time a unit file is created or edited, systemd needs to be told to notice:
+
+```bash
+sudo systemctl daemon-reload
+```
+
+This forces systemd to re-read all unit files from disk, update its internal configuration, and rebuild the dependency tree. Without running this command, systemd will not recognize the new service — or any modification to an existing one — even if you try to start or enable it immediately afterward.
+
+With the daemon reloaded, the next step was confirming systemd actually saw the new unit:
+
+```bash
+hanzo@Hashashi:~$ systemctl list-unit-files | grep backup_svc.service
+backup_svc.service                                            enabled         enabled
+hanzo@Hashashi:~$
+```
+
+From there, the service was enabled (so it runs on every boot) and started manually for an immediate test run:
+
+```bash
+sudo systemctl enable backup_svc.service
+sudo systemctl start backup_svc.service
+```
+
+To confirm the run actually succeeded, the first place to check was the script's own log file:
+
+```bash
+cat /opt/backup-rclone/logs/backup.log
+```
+
+```
+Transferred:   	   31.993 MiB / 31.993 MiB, 100%, 816.203 KiB/s, ETA 0s
+Checks:                 0 / 0, -, Listed 14
+Transferred:           14 / 14, 100%
+Elapsed time:        41.5s
+[2026-08-26 14:55:46] Backup run completed successfully.
+[2026-08-26 20:52:16] Starting backup run...
+[2026-08-26 20:52:16] Syncing Audit-Resources -> Backup_svc:Audit-Resources
+2026/08/26 20:52:24 INFO  : There was nothing to transfer
+...
+[2026-08-26 20:52:40] Backup run completed successfully.
+```
+
+Later runs correctly report `There was nothing to transfer` for each folder — expected, since nothing had changed locally since the previous sync. That line is a healthy result, not a failure.
+
+The service's own systemd-level activity can also be checked independently of the script's log file, via the journal:
+
+```bash
+sudo journalctl -u backup_svc.service
+```
+
+This is worth doing even when the script's log file looks fine, since the journal captures anything systemd itself has to say about the unit — exit codes, restarts, timing — separately from whatever the script chose to write out itself.
+
+<Callout type="finding">
+  **A QUIET SECOND TYPO:** While confirming the deployed unit file with `cat
+  /etc/systemd/system/backup_svc.service`, the `[Unit]` section read
+  `Decription=` instead of `Description=`. Unlike the earlier `user=` /
+  `User=` mistake, this one isn't functionally destructive — `Description=`
+  only supplies the human-readable text shown by `systemctl status`, so the
+  service still ran correctly with it misspelled. But it's the same failure
+  pattern in miniature: an unrecognized directive doesn't error, it's just
+  silently dropped. `systemctl cat <service>` is cheap enough to run after
+  every edit that there's no good reason to skip it.
+</Callout>
+
+---
+
+## Section 8 — The Part That Almost Undermined the Whole Project
 
 The script used `rclone sync`, which makes the destination match the source exactly, including deletions. That's by design, and it's also a trap. The very first successful log run demonstrated it directly:
 
@@ -270,7 +338,7 @@ rclone sync "$SOURCE_DIR" "$REMOTE_DEST" \
 
 ---
 
-## Section 8 — Scaling to Multiple Directories
+## Section 9 — Scaling to Multiple Directories
 
 The final version moved from a single source and destination to a loop over a list of named folders, each syncing to its own matching remote folder with its own deleted-file archive:
 
@@ -331,7 +399,7 @@ The base path in the script pointed at `~/Documents`, while the folders actually
 
 ---
 
-## Section 9 — Where This Connects to Verification Discipline
+## Section 10 — Where This Connects to Verification Discipline
 
 The habit that actually solved every bug in this build was the same one each time: stop guessing, go verify directly.
 
@@ -340,6 +408,7 @@ The habit that actually solved every bug in this build was the same one each tim
 | What is the script actually doing? | `bash -x bin/backup-rclone.sh` |
 | Who is a process actually running as? | `/proc/<pid>/exe`, `systemctl show -p MainPID` |
 | What does the unit file actually say? | `systemctl cat <service>` |
+| Did systemd pick up my latest edit? | `sudo systemctl daemon-reload`, then `systemctl list-unit-files \| grep <service>` |
 | Does that remote folder actually exist as named? | `rclone lsd <remote>:` |
 
 That's a small, unglamorous version of the same discipline that shows up in incident response: do not trust the label on the tin, verify the contents.
