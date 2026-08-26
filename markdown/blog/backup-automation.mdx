@@ -2,7 +2,7 @@
 title: "Building Resilient Backup Automation: From an rclone Script to a systemd Service"
 category: "SECURITY ENGINEERING"
 description: "A walkthrough of building an automated, multi-directory backup pipeline with rclone and systemd — silent failures, per-user config traps, a lowercase directive that quietly ran a service as root, and why rclone sync needs --backup-dir before you trust it with anything named Backups."
-thumbnail: "/rclone_pipeline.webp"
+thumbnail: "/rclone_pipeline.svg"
 date: "August 2026"
 classification: "Technical / Educational"
 challenge: "Security Engineering Series"
@@ -14,14 +14,14 @@ tags:
     "rclone",
     "Backup Automation",
     "Bash",
-    
+    "Blue Team",
   ]
 status: "Completed"
 ---
 
 # Building Resilient Backup Automation: From an rclone Script to a systemd Service
 
-> **Security Engineering **
+> **Security Engineering Series — Day 1**
 > Analyst: Kamau James | Date: August 2026 | Classification: Training / Educational
 
 ---
@@ -104,7 +104,7 @@ The trace showed the script running fine, right up to:
 
 The bug was a leftover `$HOME` reference in the log path. The script was quietly writing logs to a completely different directory than the one being checked. Nothing was broken in the sync logic at all — it just wasn't writing where anyone was looking.
 
-<Callout type="lesson">
+<Callout type="finding">
   **LESSON:** When a script produces zero output and zero errors, that is not
   proof it did nothing. It is a sign to trace execution rather than assume
   the failure point.
@@ -173,8 +173,8 @@ User=hanzo
 user=hanzo
 ```
 
-<Callout type="danger">
-  **DANGER:** systemd did not warn about the unrecognized directive. It did
+<Callout type="finding">
+  **FINDING:** systemd did not warn about the unrecognized directive. It did
   not error. It just quietly defaulted to running the service with more
   privilege than intended. A subtly wrong or altered `User=` line in a unit
   file that nobody notices because there is no error is exactly the kind of

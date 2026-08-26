@@ -23,8 +23,9 @@ export function CaseStudiesList({ studies }: CaseStudiesListProps) {
         ))}
       </div>
       <div className="max-w-7xl mt-10 mx-auto w-full px-6 md:px-12 lg:px-16 flex items-center justify-center">
-              <GhostButton href="/case-st">View All Case Studies</GhostButton>
-            </div>
-    </div>
+        <GhostButton href="/case-studies">View All Case Studies</GhostButton>
+      </div>
+
+     </div>
   );
 }
