@@ -89,7 +89,7 @@ export function Header() {
                 Kamau James
               </span>
               <span className="font-mono text-[14px] text-text-tertiary leading-none tracking-[0.04em]">
-                SOC Analyst
+                IT Auditor
               </span>
             </div>
           </a>
