@@ -1,0 +1,462 @@
+---
+title: "IT General Controls Audit — Finance ERP & Supporting Systems"
+category: "IT AUDIT"
+description: "ITGC audit covering user access, change management, and backup & recovery for the Finance ERP system..."
+thumbnail: "/itgc-audit-report.webp"
+date: "June 2026"
+classification: "Confidential — For Internal Use Only / Portfolio"
+challenge: "Meridian Financial Services ITGC Review"
+analyst: "Kamau James, IT Auditor"
+tags:
+  [
+    "ITGC",
+    "Access Management",
+    "Change Management",
+    "Backup & Recovery",
+    "Segregation of Duties",
+    "SOX",
+  ]
+status: "Completed"
+
+---
+
+# IT General Controls Audit — Meridian Financial Services
+
+> **Engagement: Finance ERP System and Supporting Systems**
+> Prepared By: Kamau James, IT Auditor | Report Date: June 3, 2026 | Classification: Confidential — For Internal Use Only
+> Distribution: CFO, Controller, Chief Information Officer, Audit Committee
+
+*Meridian Financial Services is a fictional company. This report was prepared against a simulated dataset for professional portfolio purposes.*
+
+---
+
+## Executive Summary
+
+Internal Audit performed an IT General Controls (ITGC) audit of the Finance ERP system and its directly supporting systems, covering three control domains: logical access management, change management, and backup & recovery. The audit covered the full population of in-scope records as of June 30, 2026: 62 Finance ERP user accounts, 31 change records across four systems, and the full population of scheduled backup and restore-test jobs across five systems for the trailing 12 months.
+
+<Callout type="key">
+  **KEY FINDING:** Testing identified 12 findings — 7 rated High risk and 5
+  rated Medium risk. Individual control documents (Role-Based Access Matrix,
+  SoD Conflict Matrix, change/backup policies) are reasonably designed, but
+  operating effectiveness is weak: provisioning, approval, and monitoring
+  activities are largely manual and are not consistently reconciled against
+  those control documents. This same root cause repeats across all three
+  domains and should be addressed systemically.
+</Callout>
+
+Management should prioritize remediation of the High-risk findings given their direct exposure to unauthorized access, fraud, and data-loss risk: timely deprovisioning (F-01), segregation of duties in both access (F-02) and change management (F-09), excess privilege (F-05), unapproved emergency changes (F-06), unremediated backup failures (F-10), and unproven restore capability (F-11).
+
+---
+
+## Section 1 — Background and Objective
+
+The Finance ERP system supports Meridian Financial Services' accounts payable, procurement, and general ledger processes and is a key system supporting the accuracy and integrity of the company's financial reporting. Weaknesses in the controls governing who can access this system, how changes are made to it, and whether its data can be recovered all represent risk to the confidentiality, integrity, and availability of financial data.
+
+**Audit Objective:** Determine whether IT general controls over user access, change management, and backup & recovery for the Finance ERP system and its supporting systems are appropriately designed and operating effectively.
+
+---
+
+## Section 2 — Scope and Methodology
+
+### 2.1 Systems In Scope
+
+| Field | Value |
+| ----- | ----- |
+| **Finance ERP** | Primary in-scope system — Accounts Payable, Procurement, General Ledger modules |
+| **Payroll System** | Change management and backup testing only |
+| **Vendor Portal** | Change management and backup testing only |
+| **Reporting Database** | Change management and backup testing only |
+| **File Server — Finance Share** | Backup testing only |
+
+### 2.2 Population Tested
+
+| Field | Value |
+| ----- | ----- |
+| **Testing Period** | As of June 30, 2026 (backup/restore: trailing 12 months) |
+| **User Accounts Tested** | 62 (Finance ERP) |
+| **Change Records Tested** | 31 (across 4 systems) |
+| **Backup/Restore Jobs Tested** | Full population, 5 in-scope systems |
+
+### 2.3 Workpapers by Domain
+
+```
+WP-UAR-01 — Access Management: timely deprovisioning, segregation of duties,
+            generic accounts, periodic recertification, role-based access
+WP-CHG-01 — Change Management: approval timing, testing/rollback documentation,
+            post-implementation review, requester/approver segregation of duties
+WP-BKP-01 — Backup & Recovery: failed job remediation, annual restore testing,
+            retention compliance
+```
+
+Full test workpapers, including the population tested and the result for every individual record, are retained in `04_Testing/` and are available on request. Individual finding detail sheets (condition, criteria, cause, effect, recommendation) are retained in `05_Findings/Finding_Details/`.
+
+---
+
+## Section 3 — Risk Rating Definitions
+
+| Rating | Definition |
+| ------ | ---------- |
+| **High** | Control weakness could result in material financial loss, fraud, unauthorized access to sensitive financial data, or a regulatory/compliance failure. Requires prompt management action. |
+| **Medium** | Control weakness increases risk exposure or reduces detective control effectiveness, with lower likelihood or impact than a High finding. Should be remediated within a defined timeframe. |
+| **Low** | Minor control gap or process improvement opportunity with limited risk exposure. |
+
+---
+
+## Section 4 — Summary of Findings
+
+| Ref | Domain | Finding | Exceptions | Risk |
+| --- | ------ | ------- | ---------- | ---- |
+| **F-01** | Access Management | Timely Deprovisioning of Terminated Users | 5/15 (33%) | **High** |
+| **F-02** | Access Management | Segregation of Duties Conflicts | 6/62 (10%) | **High** |
+| **F-03** | Access Management | Unauthorized Generic / Shared Accounts | 3/3 (100%) | **Medium** |
+| **F-04** | Access Management | Access Not Periodically Recertified | 7/47 (15%) | **Medium** |
+| **F-05** | Access Management | Excess Privilege vs. Role-Based Access Matrix | 7/47 (15%) | **High** |
+| **F-06** | Change Management | Changes Implemented Without Prior Approval | 4/31 (13%) | **High** |
+| **F-07** | Change Management | Missing Testing/UAT Evidence or Rollback Plan | 5/27 (19%) | **Medium** |
+| **F-08** | Change Management | Emergency Changes Missing Post-Implementation Review | 4/4 (100%) | **Medium** |
+| **F-09** | Change Management | Requester/Approver Segregation of Duties Violation | 2/31 (6%) | **High** |
+| **F-10** | Backup & Recovery | Failed Backup Jobs Not Remediated | 5/5 (100%) | **High** |
+| **F-11** | Backup & Recovery | Annual Restore Test Not Performed or Not Passed | 3/5 (60%) | **High** |
+| **F-12** | Backup & Recovery | Backup Retention Period Not Met | 4/4 (100%) | **Medium** |
+
+---
+
+## Section 5 — Detailed Findings: Access Management
+
+### F-01 Timely Deprovisioning of Terminated Users
+
+| Field | Value |
+| ----- | ----- |
+| **Risk Rating** | High |
+| **Exceptions** | 5 of 15 tested (33%) |
+| **Workpaper Ref** | WP-UAR-01, Test A |
+| **Related RCM Risk** | AM-01 |
+
+**Condition:** Testing of all 15 terminated-employee accounts identified 5 (33%) where system access to the Finance ERP was not disabled within the required timeframe. In 2 of the 5 cases, the account remained enabled as of the review date; in the remaining 3, access was disabled between 35 and 75 days after the termination date.
+
+**Criteria:** IT is required to disable a departing employee's system access within 2 business days of the termination date, per the IT/HR service level agreement.
+
+**Cause:** Termination notifications are communicated from HR to IT via ad hoc email rather than a tracked, system-generated workflow.
+
+**Effect:** Former employees retain the technical ability to log in and view or manipulate financial data after employment ends.
+
+<Callout type="finding">
+  **FINDING:** Access removal is manual and un-tracked, creating a
+  window in which terminated employees retain live system access.
+</Callout>
+
+**Recommendation:** Implement a system-driven termination workflow that automatically disables access on the termination date. In the interim, reconcile the HR termination report to enabled accounts weekly.
+
+**Management Response:** [To be completed by management]
+**Target Remediation Date:** [To be completed by management]
+
+---
+
+### F-02 Segregation of Duties Conflicts
+
+| Field | Value |
+| ----- | ----- |
+| **Risk Rating** | High |
+| **Exceptions** | 6 of 62 tested (10%) |
+| **Workpaper Ref** | WP-UAR-01, Test B |
+| **Related RCM Risk** | AM-02 |
+
+**Condition:** 6 of 62 accounts (10%) held combinations of access roles that violate the SoD policy, e.g. the ability to both create and approve AP invoices or purchase orders.
+
+**Criteria:** Per the SoD Conflict Matrix, no user should hold both the 'create' and 'approve' role for the same transaction type.
+
+**Cause:** Access requests are provisioned individually without a system control or independent review checking the requested combination against the SoD Conflict Matrix.
+
+**Effect:** A single individual could originate and approve their own transaction without independent review.
+
+**Recommendation:** Configure the ERP's provisioning workflow to block SoD-conflicting role combinations, with a compensating detective review for any exception not remediated within 30 days.
+
+**Management Response:** [To be completed by management]
+**Target Remediation Date:** [To be completed by management]
+
+---
+
+### F-03 Unauthorized Generic / Shared Accounts
+
+| Field | Value |
+| ----- | ----- |
+| **Risk Rating** | Medium |
+| **Exceptions** | 3 of 3 tested (100%) |
+| **Workpaper Ref** | WP-UAR-01, Test C |
+| **Related RCM Risk** | AM-03 |
+
+**Condition:** 3 generic/shared accounts were identified, all active, with no named owner, approval, or recertification on file. Two carry System Administrator privileges.
+
+**Criteria:** Generic/shared accounts are prohibited without a documented exception naming an accountable owner.
+
+**Cause:** Accounts created for setup or testing were never formally decommissioned or brought under individual ownership.
+
+**Effect:** Actions taken using these accounts cannot be attributed to a specific individual.
+
+**Recommendation:** Disable accounts without a current business need; document an approved exception with a named owner for any that must remain, and subject them to the standard recertification cycle.
+
+**Management Response:** [To be completed by management]
+**Target Remediation Date:** [To be completed by management]
+
+---
+
+### F-04 Access Not Periodically Recertified
+
+| Field | Value |
+| ----- | ----- |
+| **Risk Rating** | Medium |
+| **Exceptions** | 7 of 47 tested (15%) |
+| **Workpaper Ref** | WP-UAR-01, Test D |
+| **Related RCM Risk** | AM-04 |
+
+**Condition:** 7 of 47 active accounts (15%) had not been recertified within the required 90-day window, including the 3 generic accounts that had never been recertified.
+
+**Criteria:** Data/system owners must recertify user access on a quarterly basis.
+
+**Cause:** Recertification is a manual, calendar-reminder-driven exercise rather than a tracked, automated campaign.
+
+**Effect:** Inappropriate access, including the exceptions in F-02 and F-05, is less likely to be identified and remediated in a timely manner.
+
+**Recommendation:** Move recertification to a system-generated quarterly campaign with a fixed due date, escalation for overdue reviews, and a retained completion report.
+
+**Management Response:** [To be completed by management]
+**Target Remediation Date:** [To be completed by management]
+
+---
+
+### F-05 Excess Privilege vs. Role-Based Access Matrix
+
+| Field | Value |
+| ----- | ----- |
+| **Risk Rating** | High |
+| **Exceptions** | 7 of 47 tested (15%) |
+| **Workpaper Ref** | WP-UAR-01, Test E |
+| **Related RCM Risk** | AM-05 |
+
+**Condition:** 7 of 47 active accounts (15%) held access that did not match the Role-Based Access Matrix, including a Sales Representative with full AP create-and-approve access and an HR Generalist with System Administrator rights.
+
+**Criteria:** Access should be provisioned per the Role-Based Access Matrix, following least privilege.
+
+**Cause:** Access changes are not consistently reverted once the underlying business need ends, and out-of-matrix requests can be approved without a documented justification.
+
+**Effect:** Users hold capabilities beyond what their role requires, widening the pool of individuals who could misuse the system.
+
+<Callout type="finding">
+  **FINDING:** Out-of-matrix access combined with SoD conflicts (F-02) and
+  unrecertified accounts (F-04) points to a broader breakdown in provisioning
+  discipline, not three isolated issues.
+</Callout>
+
+**Recommendation:** Require documented justification and an expiration date for any access deviating from the matrix, and add an excess-privilege check to the quarterly recertification campaign.
+
+**Management Response:** [To be completed by management]
+**Target Remediation Date:** [To be completed by management]
+
+---
+
+## Section 6 — Detailed Findings: Change Management
+
+### F-06 Changes Implemented Without Prior Approval
+
+| Field | Value |
+| ----- | ----- |
+| **Risk Rating** | High |
+| **Exceptions** | 4 of 31 tested (13%) |
+| **Workpaper Ref** | WP-CHG-01, Test A |
+| **Related RCM Risk** | CM-01 |
+
+**Condition:** 4 of 31 changes (13%), all classified as emergency changes, were implemented before approval was obtained, and in 2 of the 4 cases no approval was ever recorded.
+
+**Criteria:** All changes require Change Advisory Board (or designated approver) sign-off prior to implementation.
+
+**Cause:** The emergency change process allows implementation to proceed immediately, with approval intended to follow but not consistently obtained or tracked.
+
+**Effect:** Unauthorized or unreviewed changes can be introduced into production financial systems without independent oversight.
+
+**Recommendation:** Require a documented, time-stamped verbal or electronic approval from an on-call approver before any emergency change is implemented, even when full CAB review follows later.
+
+**Management Response:** [To be completed by management]
+**Target Remediation Date:** [To be completed by management]
+
+---
+
+### F-07 Missing Testing/UAT Evidence or Rollback Plan
+
+| Field | Value |
+| ----- | ----- |
+| **Risk Rating** | Medium |
+| **Exceptions** | 5 of 27 tested (19%) |
+| **Workpaper Ref** | WP-CHG-01, Test B |
+| **Related RCM Risk** | CM-02 |
+
+**Condition:** 5 of 27 standard changes (19%) were missing documented testing/UAT evidence, a documented rollback plan, or both.
+
+**Criteria:** Standard changes require documented testing/UAT evidence and a documented rollback plan prior to implementation.
+
+**Cause:** Testing and rollback documentation are not enforced as mandatory fields in the change request process before a change can be marked ready for implementation.
+
+**Effect:** Defective changes are more likely to reach production, and recovery from a problematic change is slower without a pre-defined rollback plan.
+
+**Recommendation:** Make testing evidence and a rollback plan mandatory fields in the change request form, with the request blocked from moving to implementation until both are complete.
+
+**Management Response:** [To be completed by management]
+**Target Remediation Date:** [To be completed by management]
+
+---
+
+### F-08 Emergency Changes Missing Post-Implementation Review
+
+| Field | Value |
+| ----- | ----- |
+| **Risk Rating** | Medium |
+| **Exceptions** | 4 of 4 tested (100%) |
+| **Workpaper Ref** | WP-CHG-01, Test C |
+| **Related RCM Risk** | CM-03 |
+
+**Condition:** All 4 emergency changes tested lacked a documented post-implementation review (PIR).
+
+**Criteria:** Emergency changes require a documented PIR within 5 business days of implementation.
+
+**Cause:** There is no tracked follow-up mechanism to ensure a PIR is scheduled and completed after an emergency change is implemented.
+
+**Effect:** Control gaps introduced through the expedited emergency process are not being identified or corrected after the fact.
+
+**Recommendation:** Add a system-tracked PIR task, due 5 business days after implementation, that is automatically created whenever an emergency change is logged.
+
+**Management Response:** [To be completed by management]
+**Target Remediation Date:** [To be completed by management]
+
+---
+
+### F-09 Requester/Approver Segregation of Duties Violation
+
+| Field | Value |
+| ----- | ----- |
+| **Risk Rating** | High |
+| **Exceptions** | 2 of 31 tested (6%) |
+| **Workpaper Ref** | WP-CHG-01, Test D |
+| **Related RCM Risk** | CM-04 |
+
+**Condition:** 2 of 31 changes (6%) were both requested and approved by the same individual.
+
+**Criteria:** The change requester and approver must be different individuals.
+
+**Cause:** The change management tool does not system-enforce that the approver field be populated by someone other than the requester.
+
+**Effect:** A single individual can both originate and approve their own change, removing independent review from the change process.
+
+<Callout type="confirmed">
+  **CONFIRMED:** Emergency changes account for 100% of the unapproved-change
+  exceptions (F-06) and all of the missing-PIR exceptions (F-08), indicating
+  the emergency change path — not standard changes — is where change controls
+  are weakest.
+</Callout>
+
+**Recommendation:** Configure the change management tool to block a requester from approving their own change request.
+
+**Management Response:** [To be completed by management]
+**Target Remediation Date:** [To be completed by management]
+
+---
+
+## Section 7 — Detailed Findings: Backup & Recovery
+
+### F-10 Failed Backup Jobs Not Remediated
+
+| Field | Value |
+| ----- | ----- |
+| **Risk Rating** | High |
+| **Exceptions** | 5 of 5 tested (100%) |
+| **Workpaper Ref** | WP-BKP-01, Test A |
+| **Related RCM Risk** | BR-01 |
+
+**Condition:** 5 backup jobs across 3 systems failed with no evidence of investigation or a successful rerun.
+
+**Criteria:** Failed backup jobs must be investigated and successfully rerun within 24 hours.
+
+**Cause:** Backup job failures generate an alert but are not tracked to resolution through a formal incident or ticketing process.
+
+**Effect:** Data created or changed since the last successful backup for the affected systems may not be recoverable in the event of a system failure.
+
+**Recommendation:** Route backup failure alerts into the IT incident management system with a mandatory resolution SLA, and require evidence of a successful rerun before the incident can be closed.
+
+**Management Response:** [To be completed by management]
+**Target Remediation Date:** [To be completed by management]
+
+---
+
+### F-11 Annual Restore Test Not Performed or Not Passed
+
+| Field | Value |
+| ----- | ----- |
+| **Risk Rating** | High |
+| **Exceptions** | 3 of 5 tested (60%) |
+| **Workpaper Ref** | WP-BKP-01, Test B |
+| **Related RCM Risk** | BR-02 |
+
+**Condition:** 3 of 5 in-scope systems did not have a documented, successful restore test within the trailing 12 months: 2 systems had no restore test on file at all, and 1 system's most recent restore test failed with no evidence of a follow-up retest.
+
+**Criteria:** A full restore test must be performed and documented for each in-scope system at least annually.
+
+**Cause:** Restore testing is not scheduled or tracked centrally, and a failed restore test does not automatically trigger a required retest.
+
+**Effect:** Management cannot demonstrate that backups for the majority of in-scope systems can actually be restored, undermining confidence in recovery capability during an actual incident.
+
+<Callout type="key">
+  **KEY FINDING:** 60% of in-scope systems have unproven restore capability.
+  Combined with F-10 (unremediated backup failures), this represents the
+  highest-impact gap in the audit: recoverability cannot currently be relied
+  upon for most in-scope systems.
+</Callout>
+
+**Recommendation:** Establish an annual restore-testing calendar covering all in-scope systems, with results logged centrally, and require any failed restore test to be retested and passed within 30 days.
+
+**Management Response:** [To be completed by management]
+**Target Remediation Date:** [To be completed by management]
+
+---
+
+### F-12 Backup Retention Period Not Met
+
+| Field | Value |
+| ----- | ----- |
+| **Risk Rating** | Medium |
+| **Exceptions** | 4 of 4 tested (100%) |
+| **Workpaper Ref** | WP-BKP-01, Test C |
+| **Related RCM Risk** | BR-03 |
+
+**Condition:** The 4 backup jobs identified as failed in Finding F-10 were also flagged as not meeting the 90-day minimum retention period, since no successful backup was retained in their place.
+
+**Criteria:** Backup retention must meet the 90-day minimum per the data retention policy.
+
+**Cause:** This is the same underlying root cause as Finding F-10 — an unremediated backup failure results in a retention gap as well as a recovery-point gap.
+
+**Effect:** Historical financial data for the affected systems may not be available for the full policy-required retention period.
+
+**Recommendation:** Remediating Finding F-10 (timely investigation and rerun of failed jobs) will resolve this finding; no separate remediation action is required.
+
+**Management Response:** [To be completed by management]
+**Target Remediation Date:** [To be completed by management]
+
+---
+
+## Section 8 — Conclusion
+
+Based on the procedures performed, IT general controls over access, change management, and backup & recovery for the Finance ERP system are **not fully effective**. While the underlying policies and control documents are reasonably designed, operating effectiveness is undermined by manual, non-system-enforced processes across all three domains. Internal Audit recommends management prioritize the High-risk findings identified above and consider the systemic root cause common to all twelve findings when designing remediation. Internal Audit will follow up on management's remediation progress, per the Management Action Plan (`07_Management_Action_Plan/`), in a subsequent review.
+
+---
+
+## Appendix — Supporting Documentation
+
+```
+01_Audit_Plan/            Audit Objectives, Audit Scope, Risk Assessment, Audit Program
+02_Risk_Control_Matrix/   ITGC Risk & Control Matrix (all three domains)
+03_Evidence/              Access, Change, Backup, and Recertification evidence populations
+04_Testing/                WP-UAR-01, WP-CHG-01, WP-BKP-01 detailed testing workpapers
+05_Findings/               Findings Register and individual Finding Detail documents
+07_Management_Action_Plan/ Remediation owners, target dates, and status
+```
+
+---
+
+> _Meridian Financial Services • 2026 ITGC Audit • Finance ERP & Supporting Systems • Report Ref: IA-2026-014_

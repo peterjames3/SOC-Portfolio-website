@@ -7,21 +7,21 @@ import { useIntersectionObserver } from "../hooks/useIntersectionObserver";
 const services = [
   {
     number: "01",
-    title: "Security Monitoring & SIEM",
+    title: "ITGC & SOX Compliance Audits",
     description:
-      "Design, deploy, and optimize SIEM platforms for comprehensive threat visibility. Custom correlation rules, alerting thresholds, and dashboard creation across Splunk, Sentinel, and Elastic.",
+      "Plan and execute IT general controls audits across access management, change management, and backup & recovery. Risk-based scoping, control walkthroughs, and testing mapped to SOX and audit committee reporting requirements.",
   },
   {
     number: "02",
-    title: "Threat Hunting & Detection",
+    title: "Access & Identity Controls Testing",
     description:
-      "Proactive threat hunting using hypothesis-driven methodologies. Develop custom detection logic, Sigma rules, and YARA signatures to identify advanced persistent threats and insider risks.",
+      "Test provisioning, deprovisioning, segregation of duties, and periodic recertification against role-based access matrices. Identify excess privilege, orphaned accounts, and SoD conflicts across ERP and supporting systems.",
   },
   {
     number: "03",
-    title: "Incident Response & Forensics",
+    title: "Change Management & Release Controls",
     description:
-      "Lead incident response from detection through recovery. Digital forensics, evidence preservation, root cause analysis, and post-incident reporting. Build IR playbooks and tabletop exercises.",
+      "Evaluate change approval, testing/UAT evidence, rollback planning, and post-implementation review across standard and emergency change pathways. Test requester/approver segregation and CAB governance.",
   },
   {
     number: "04",

@@ -38,14 +38,15 @@ export function HeroSection() {
 
           {/* Headline */}
           <h1 className="font-display text-[40px] md:text-[52px] lg:text-[72px] font-normal leading-[1.05] tracking-[-0.02em] text-text-primary max-w-[900px]">
-            Defending digital infrastructure through precision and vigilance.
+            Verifying that controls hold up, not just that policies exist.
           </h1>
 
           {/* Subheadline */}
           <p className="font-body text-lg text-text-secondary leading-relaxed mt-6 max-w-[600px]">
-            Security Operations Center Analyst specializing in threat detection,
-            incident response, and forensic analysis. I turn security data into
-            actionable intelligence.
+            IT Auditor specializing in ITGC testing, access &amp; change
+            management controls, and risk-based audit reporting. I turn
+            control populations into evidence-backed findings management can
+            act on.
           </p>
 
           {/* CTA Buttons */}
@@ -54,10 +55,7 @@ export function HeroSection() {
             <SecondaryButton href="#work">View My Work</SecondaryButton>
           </div>
 
-          {/* Subtle note */}
-          <p className="font-body text-sm text-text-tertiary mt-4 max-w-[400px]">
-            Available for full-time roles and contract security engagements.
-          </p>
+        
         </div>
 
         {/* Stats Bar */}
@@ -69,10 +67,10 @@ export function HeroSection() {
           }`}
         >
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-8">
-            <StatCounter end={10} suffix="+" label="Incidents Handled" />
-            <StatCounter end={4} suffix="+" label="Threat Campaigns" />
-            <StatCounter end={4} suffix="" label="Certifications" />
-            <StatCounter end={2} suffix="+" label="Years Experience" />
+            <StatCounter end={1} suffix="+" label="ITGC Audits Delivered" />
+            <StatCounter end={3} suffix="" label="Control Domains Tested" />
+            <StatCounter end={2} suffix="+" label="Certifications In Progress" />
+            <StatCounter end={1} suffix="+" label="Years Experience" />
           </div>
         </div>
       </div>

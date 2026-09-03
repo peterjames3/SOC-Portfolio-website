@@ -16,9 +16,9 @@ const certifications = [
   {
     title: "SOC Level 1 Path",
     issuer: "TryHackMe",
-    date: "Ongoing",
-    status: "In Progress" as const,
-    credentialId: "undefined",
+    date: "July 2026",
+    status: "Completed" as const,
+    credentialId:"THM-INXQM56DH0",
     link: "https://tryhackme.com/p/Peterejames",
   },
     {

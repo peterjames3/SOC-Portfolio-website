@@ -14,9 +14,9 @@ import { WriteUpsList } from "./WriteUpList"
 const CATEGORIES = [
   "ALL",
   "SIEM",
-  "THREAT HUNTING",
-  "INCIDENT RESPONSE",
-  "MALWARE ANALYSIS",
+  // "THREAT HUNTING",
+  // "INCIDENT RESPONSE",
+  // "MALWARE ANALYSIS",
   "CLOUD SECURITY",
   "IT AUDIT",
 ];
