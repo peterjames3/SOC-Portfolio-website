@@ -67,7 +67,7 @@ export function HeroSection() {
           }`}
         >
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-8">
-            <StatCounter end={1} suffix="+" label="ITGC Audits Delivered" />
+            <StatCounter end={10} suffix="+" label="ITGC Audits Delivered" />
             <StatCounter end={3} suffix="" label="Control Domains Tested" />
             <StatCounter end={2} suffix="+" label="Certifications In Progress" />
             <StatCounter end={1} suffix="+" label="Years Experience" />
